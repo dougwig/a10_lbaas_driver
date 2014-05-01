@@ -93,10 +93,16 @@ class A10Client():
 
         header = {"Content-Type": "application/json",
                   "User-Agent": "OS-LBaaS-AGENT"}
-        if DEBUG is True:
-            req = httplib.HTTPConnection(self.device_info['host'], 80)
+
+        if 'port' in self.device_info:
+            axapi_port = int(self.device_info['port'])
+        elif DEBUG is True:
+            axapi_port = 80
         else:
-            req = httplib.HTTPSConnection(self.device_info['host'], 443)
+            axapi_port = 443
+
+        req = httplib.HTTPConnection(self.device_info['host'], axapi_port)
+
         try:
             url = url % self.session_id
         except:
