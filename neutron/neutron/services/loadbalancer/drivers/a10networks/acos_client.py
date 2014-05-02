@@ -18,20 +18,22 @@
 This file is specifically for managing the API connection to
 """
 
-
 import hashlib
-import httplib
 import json
+import re
+import ssl
+import traceback
+import urllib3
+
 import request_struct_v2
 import a10_exceptions as a10_ex
 
 from ConfigParser import ConfigParser
 from neutron.openstack.common import log as logging
 
-
-
-DEBUG=True
+# Neutron logs
 LOG=logging.getLogger(__name__)
+
 device_config = ConfigParser()
 device_config.read('/etc/neutron/services/loadbalancer/'
                                     'a10networks/a10networks_config.ini')
@@ -39,24 +41,121 @@ device_config.read('/etc/neutron/services/loadbalancer/'
 class A10Client():
 
     def __init__(self, tenant_id= ""):
+        LOG.info("A10Client init: tenant_id=%s", tenant_id)
         self.device_info=self.select_device(tenant_id = tenant_id)
-        self.get_session_id(tenant_id=tenant_id)
+        self.set_base_url()
+
+        self.force_tlsv1 = False
+        self.session_id = None
+        self.get_session_id()
+        if self.session_id == None:
+            msg = _("A10Client: unable to get session_id from ax")
+            LOG.error(msg)
+            raise a10_ex.A10ThunderNoSession()
+        self.check_version()
+
         self.tenant_id = tenant_id
+        LOG.info("A10Client init: successfully connected, session_id=%s", 
+                  self.session_id)
 
-    def get_session_id(self, tenant_id= ""):
+
+    def set_base_url(self):
+        protocol = "https"
+        host = ""
+        port = "443"
+
+        if "protocol" in self.device_info:
+            protocol = self.device_info['protocol']
+        elif port == "80":
+            protocol = "http"
+
+        host = self.device_info['host']
+
+        if "port" in self.device_info:
+            port = self.device_info['port']
+
+        port = int(port)
+
+        self.base_url = "%s://%s:%d" % (protocol, host, port)
+
+
+    def axapi_http(self, method, api_url, params={}):
+        if self.force_tlsv1:
+            http = urllib3.PoolManager(ssl_version=ssl.PROTOCOL_TLSv1,
+                                       cert_reqs='CERT_NONE',
+                                       assert_hostname=False)
+        else:
+            http = urllib3.PoolManager()
+
+        headers = {
+            "Content-Type": "application/json",
+            "User-Agent": "OS-LBaaS-AGENT"
+        }
+
+        LOG.debug("axapi_http: params = %s", params)
+
+        url = self.base_url + api_url
+        if params:
+            payload = json.dumps(params, encoding='utf-8')
+        else:
+            payload = None
+
+        r = http.urlopen(method, url, body=payload, headers=headers)
+
+        LOG.debug("axapi_http: data = %s", r.data)
+
+        xmlok = '<?xml version="1.0" encoding="utf-8" ?><response status="ok"></response>'
+        if r.data == xmlok:
+            return {'response': {'status': 'OK'}}
+
+        return json.loads(r.data)
+
+
+    def get_session_id(self):
+        auth_url = "/services/rest/v2.1/?format=json&method=authenticate"
+        params = {
+            "username": self.device_info['username'],
+            "password": self.device_info['password']
+        }
+
         try:
-            response = self.send(method = "POST",
-                                 url = "/services/rest/v2.1/?"
-                                       "format=json&method=authenticate",
-                                 body = {"username":
-                                             self.device_info['username'],
-                                         "password":
-                                             self.device_info['password']},
-                                 new_session = 2)
+            r = self.axapi_http("POST", auth_url, params)
+            self.session_id = r['session_id']
 
-            self.session_id = response['session_id']
-        except:
-            self.session_id = None
+        except Exception, e:
+            tlsv1_error = "SSL23_GET_SERVER_HELLO:tlsv1 alert protocol version"
+            if self.force_tlsv1 == False and str(e).find(tlsv1_error) >= 0:
+                # workaround ssl version
+                self.force_tlsv1 = True
+                self.get_session_id()
+            else:
+                LOG.debug("get_session_id failed: %s", e)
+                LOG.debug(traceback.format_exc())
+                self.session_id = None
+
+
+    def check_version(self):
+        if 'skip_version_check' in self.device_info:
+            if self.device_info['skip_version_check']:
+                return
+
+        info_url = ( "/services/rest/v2.1/?format=json&session_id=%s" 
+                     "&method=system.information.get" % self.session_id )
+
+        r = self.axapi_http("GET", info_url)
+
+        x = r['system_information']['software_version'].split('.')
+        major = int(x[0])
+        minor = int(x[1])
+        dot = 0
+        m = re.match("^(\d+)", x[2])
+        if m != None:
+          dot = int(m.group(1))
+
+        if major < 2 or minor < 7 or dot < 2:
+            LOG.error(_("A10Client: driver requires ACOS version 2.7.2+"))
+            raise a10_ex.A10ThunderVersionMismatch()
+
 
     def partition(self, tenant_id = ""):
         if self.device_info['v_method'].lower() == 'adp':
@@ -66,75 +165,50 @@ class A10Client():
                     try:
                         self.partition_active(tenant_id = tenant_id)
                     except:
-                       raise a10_ex.ParitionActiveError(
+                        LOG.debug(traceback.format_exc())
+                        raise a10_ex.PartitionActiveError(
                            partition = tenant_id[0:13])
                 else:
                     try:
                         self.partition_create(tenant_id = tenant_id)
                     except:
-                        raise a10_ex.ParitionCreateError(
+                        LOG.debug(traceback.format_exc())
+                        raise a10_ex.PartitionCreateError(
                            partition = tenant_id[0:13])
                     finally:
                         try:
                             self.partition_active(tenant_id = tenant_id)
                         except:
-                            raise a10_ex.ParitionActiveError(
+                            LOG.debug(traceback.format_exc())
+                            raise a10_ex.PartitionActiveError(
                                partition = tenant_id[0:13])
             except:
-               raise a10_ex.SearchError(term = "Partition Discovery for %s"
+                LOG.debug(traceback.format_exc())
+                raise a10_ex.SearchError(term = "Partition Discovery for %s"
                                                % tenant_id[0:13])
 
-    def send(self, tenant_id= "", method = "", url = "", body = "",
-             new_session = 0):
+    def send(self, tenant_id="", method="", url="", body={}, new_session=0):
         if self.session_id is None and new_session != 2:
-            self.get_session_id(tenant_id=tenant_id)
+            self.get_session_id()
         if new_session != 2 and new_session !=4 and new_session != 3:
             self.partition(tenant_id=tenant_id)
 
-        header = {"Content-Type": "application/json",
-                  "User-Agent": "OS-LBaaS-AGENT"}
-
-        if 'port' in self.device_info:
-            axapi_port = int(self.device_info['port'])
-        elif DEBUG is True:
-            axapi_port = 80
-        else:
-            axapi_port = 443
-
-        req = httplib.HTTPConnection(self.device_info['host'], axapi_port)
-
-        try:
+        if url.find('%') >= 0 and self.session_id != None:
             url = url % self.session_id
-        except:
-           LOG.debug(_("Could not get Session ID"))
-        if len(body) == 0:
-            data = None
-        else:
-            data = json.dumps(body, encoding='utf-8')
-        req.request(method, url, data, header)
-        response = req.getresponse().read()
-        print "HOST--->", self.device_info['host']
-        print "URL---->", url
-        print "BODY---->", body
-        print "new_SESSION--->", new_session
-        print "RESPONSE---->", response
-        try:
-            r_obj = json.loads(response, encoding = 'utf-8')
 
-        except:
-            r_obj = response
+        r = self.axapi_http(method, url, body)
 
-        finally:
-            if new_session == 0 or new_session == 1 or new_session == 3:
-                self.close_session(tenant_id= tenant_id)
+        if new_session == 0 or new_session == 1 or new_session == 3:
+            LOG.debug("about to close session after req")
+            self.close_session(tenant_id= tenant_id)
+            LOG.debug("session closed")
 
-            return r_obj
-
+        LOG.debug('response = %s', r)
+        return r
 
 
     def close_session(self, tenant_id = ""):
-        response = self.partition_active(tenant_id = tenant_id, default =
-        True)
+        response = self.partition_active(tenant_id=tenant_id, default=True)
         if "response" in response:
             if 'status' in response['response']:
                 if response['response']['status'] == "OK":
@@ -186,7 +260,7 @@ class A10Client():
         req_info = (request_struct_v2.PARTITION_OBJ.call.delete.toDict()
                     .items())
         self.close_session(tenant_id=self.tenant_id)
-        self.get_session_id(tenant_id = self.tenant_id)
+        self.get_session_id()
         return self.send(tenant_id = tenant_id, method = req_info[0][0],
                          url = req_info[0][1] % self.session_id,
                          body = {"name": self.tenant_id[0:13]},
@@ -210,7 +284,7 @@ class A10Client():
         devices = {}
         for i in device_config.items('a10networks'):
             devices[i[0]] = i[1].replace("\n", "", len(i[1]))
-        #print "DEVICES_DICT--->", devices
+        LOG.debug("DEVICES_DICT--->", devices)
         nodes = 256
         #node_prefix = "a10"
         node_list = []
@@ -220,7 +294,7 @@ class A10Client():
             x += 1
         z = 0
         key_list = devices.keys()
-        #print "THIS IS THE KEY LIST", key_list
+        LOG.debug("THIS IS THE KEY LIST", key_list)
         while z < nodes:
             for key in key_list:
                 key_index = int(hashlib.sha256(key).hexdigest(), 16)
@@ -231,7 +305,7 @@ class A10Client():
                 else:
                     result = result + 1
                 stored_obj = json.loads(devices[key])
-                #print "THIS IS THE STORE OBJECT---->", stored_obj
+                LOG.debug("THIS IS THE STORE OBJECT---->", repr(stored_obj))
                 node_list[result][1].insert(result, stored_obj)
 
             z += 1
@@ -239,12 +313,12 @@ class A10Client():
         limit = 256
         th = tenant_hash
         for i in range(0, limit):
-            print "NODE_LENGTH------>", len(node_list[th % nodes][1])
+            LOG.debug("NODE_LENGTH------>", len(node_list[th % nodes][1]))
             if len(node_list[th % nodes][1]) > 0:
                 node_tenant_mod = tenant_hash % len(node_list[th % nodes][1])
-                print "node_tenant_mod--->",node_tenant_mod
+                LOG.debug("node_tenant_mod--->",node_tenant_mod)
                 device_info = node_list[th % nodes][1][node_tenant_mod]
-                print "DEVICE_INFO---->", device_info
+                LOG.debug("DEVICE_INFO---->", device_info['host'])
                 device_info['tenant_id'] = tenant_id
                 break
             th = th + 1

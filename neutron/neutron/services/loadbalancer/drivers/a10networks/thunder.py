@@ -14,7 +14,7 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
-
+import traceback
 
 import a10_exceptions as a10_ex
 import request_struct_v2
@@ -40,6 +40,7 @@ class ThunderDriver(LoadBalancerPlugin):
 
 
     def inspect_response(self, response):
+        LOG.debug("inspect_response: %s", response)
         if 'response' in response:
             #indicates configuration already exist continue processing.
             if response['response']['status'] == "OK":
@@ -67,8 +68,8 @@ class ThunderDriver(LoadBalancerPlugin):
                 return True
             else:
                 return False
-        else:
-            return False
+
+        return False
 
     def persistence_create(self, vip):
         self.device_context(tenant_id = vip['tenant_id'])
@@ -85,6 +86,7 @@ class ThunderDriver(LoadBalancerPlugin):
                                          url = req[0][1],
                                          body = {"name": temp_name}))
                 except:
+                    LOG.debug(traceback.format_exc())
                     raise a10_ex.SearchError(term = "SRC_IP_PER_TEMP")
 
                 if res is not True:
@@ -101,6 +103,7 @@ class ThunderDriver(LoadBalancerPlugin):
                             url = src_req[0][1],
                             body = {"name": temp_name})))
                     except:
+                        LOG.debug(traceback.format_exc())
                         raise a10_ex.TemplateCreateError(template = temp_name)
 
                     if src_res is True:
@@ -122,6 +125,7 @@ class ThunderDriver(LoadBalancerPlugin):
                             url = req[0][1],
                             body = {"name": temp_name}))
                 except:
+                    LOG.debug(traceback.format_exc())
                     raise a10_ex.SearchError(term = "COOKIE_PER_TEMP")
 
                 if res is not True:
@@ -138,6 +142,7 @@ class ThunderDriver(LoadBalancerPlugin):
                                              url = src_req[0][1],
                                              body = {"name": temp_name})))
                     except:
+                        LOG.debug(traceback.format_exc())
                         raise a10_ex.TemplateCreateError(
                             template = temp_name)
 
@@ -149,6 +154,7 @@ class ThunderDriver(LoadBalancerPlugin):
                     return None
 
             elif vip['session_persistence']['type'] == "APP_COOKIE":
+                LOG.debug(traceback.format_exc())
                 raise a10_ex.UnsupportedFeatureAppCookie()
         else:
             return None
@@ -201,12 +207,15 @@ class ThunderDriver(LoadBalancerPlugin):
                 else:
                     self.plugin.update_status(context, lb_db.Vip,
                                               vip['id'], constants.ERROR)
+                    LOG.debug(traceback.format_exc())
                     raise a10_ex.VipCreateError(vip = vip['id'])
 
             except:
+                LOG.debug(traceback.format_exc())
                 raise a10_ex.VipCreateError(vip = vip['id'])
 
         else:
+            LOG.debug(traceback.format_exc())
             self.plugin.update_status(context, lb_db.Vip,
                                       vip['id'], constants.ERROR)
             raise a10_ex.VipCreateError(vip = vip['id'])
@@ -232,6 +241,7 @@ class ThunderDriver(LoadBalancerPlugin):
                                        url = vport_obj_req[0][1],
                                        body = {"name": vport_name})
         except:
+            LOG.debug(traceback.format_exc())
             raise a10_ex.SearchError(term = "vPort Object")
 
         if 'virtual_service' in vport_res:
@@ -258,10 +268,12 @@ class ThunderDriver(LoadBalancerPlugin):
                 else:
                     self.plugin.update_status(context, lb_db.Vip,
                                               vip['id'], constants.ERROR)
+                    LOG.debug(traceback.format_exc())
                     raise a10_ex.VipUpdateError(vip = vip['id'])
             except:
                 self.plugin.update_status(context, lb_db.Vip,
                                           vip['id'], constants.ERROR)
+                LOG.debug(traceback.format_exc())
                 raise a10_ex.VipUpdateError(vip = vip['id'])
 
 
@@ -300,10 +312,12 @@ class ThunderDriver(LoadBalancerPlugin):
                         body = {'name': vs_name}))) is True:
                     self.plugin._delete_db_vip(context, vip['id'])
                 else:
+                    LOG.debug(traceback.format_exc())
                     self.plugin._delete_db_vip(context, vip['id'])
                     raise a10_ex.VipDeleteError(vip = vs_name)
 
             except:
+                LOG.debug(traceback.format_exc())
                 self.plugin.update_status(context, lb_db.Vip, vip['id'],
                                           constants.ERROR)
                 raise a10_ex.VipDeleteError(vip = vs_name)
@@ -341,11 +355,13 @@ class ThunderDriver(LoadBalancerPlugin):
                 self.plugin.update_status(context, lb_db.Pool,
                                           pool['id'], constants.ACTIVE)
             else:
+                LOG.debug(traceback.format_exc())
                 self.plugin.update_status(context, lb_db.Pool,
                                           pool['id'], constants.ERROR)
                 raise a10_ex.SgCreateError(sg = pool['id'])
 
         except:
+            LOG.debug(traceback.format_exc())
             self.plugin.update_status(context, lb_db.Pool,
                                       pool['id'], constants.ERROR)
             raise a10_ex.SgCreateError(sg = pool['id'])
@@ -380,16 +396,19 @@ class ThunderDriver(LoadBalancerPlugin):
                 self.plugin.update_status(context, lb_db.Pool,
                                           pool['id'], constants.ACTIVE)
             else:
+                LOG.debug(traceback.format_exc())
                 self.plugin.update_status(context, lb_db.Pool,
                                           pool['id'], constants.ERROR)
                 raise a10_ex.SgUpdateError(sg = pool['id'])
 
         except:
+            LOG.debug(traceback.format_exc())
             self.plugin.update_status(context, lb_db.Pool,
                                       pool['id'], constants.ERROR)
             raise a10_ex.SgUpdateError(sg = pool['id'])
 
     def delete_pool(self, context, pool):
+        LOG.debug('delete_pool context=%s, pool=%s' % (context, pool))
         self.device_context(tenant_id = pool['tenant_id'])
         for members in pool['members']:
             self.delete_member(context, self.plugin.get_member(
@@ -422,6 +441,7 @@ class ThunderDriver(LoadBalancerPlugin):
                                                 "administrator."
                 )
         except:
+            LOG.debug(traceback.format_exc())
             # self.plugin._delete_db_pool(context, pool['id'])
             raise a10_ex.SgDeleteError(sg = pool['id'])
 
@@ -519,6 +539,7 @@ class ThunderDriver(LoadBalancerPlugin):
                                               constants.ERROR)
                     raise a10_ex.MemberCreateError(member = server_name)
         except:
+            LOG.debug(traceback.format_exc())
             self.plugin.update_status(context, lb_db.Member,
                                       member["id"],
                                       constants.ERROR)
@@ -545,6 +566,7 @@ class ThunderDriver(LoadBalancerPlugin):
                                               member["id"],
                                               constants.ERROR)
             except:
+                LOG.debug(traceback.format_exc())
                 self.plugin.update_status(context, lb_db.Member, member["id"],
                                           constants.ERROR)
 
@@ -586,6 +608,7 @@ class ThunderDriver(LoadBalancerPlugin):
                                           member["id"],
                                           constants.ERROR)
         except:
+            LOG.debug(traceback.format_exc())
             self.plugin.update_status(context, lb_db.Member,
                                       member["id"],
                                       constants.ERROR)
@@ -652,6 +675,7 @@ class ThunderDriver(LoadBalancerPlugin):
 
                                               constants.ERROR)
         except:
+            LOG.debug(traceback.format_exc())
             self.plugin.update_status(context, lb_db.Member, member["id"],
                                       constants.ERROR)
             raise a10_ex.MemberDeleteError(member = member["id"])
@@ -721,6 +745,7 @@ class ThunderDriver(LoadBalancerPlugin):
                 raise a10_ex.HealthMonitorUpdateError(hm = hm_obj['name'])
 
         except:
+            LOG.debug(traceback.format_exc())
             raise a10_ex.HealthMonitorUpdateError(hm = hm_obj['name'])
 
 
@@ -819,6 +844,7 @@ class ThunderDriver(LoadBalancerPlugin):
                 raise a10_ex.HealthMonitorUpdateError(hm = hm_obj['name'])
 
         except:
+            LOG.debug(traceback.format_exc())
             self.plugin.update_pool_health_monitor(context,
                                                    health_monitor[
                                                        "id"],
@@ -865,6 +891,7 @@ class ThunderDriver(LoadBalancerPlugin):
                                                                    'id'],
                                                                pool_id)
         except:
+            LOG.debug(traceback.format_exc())
             self.plugin.update_pool_health_monitor(context,
                                                    health_monitor["id"],
                                                    pool_id,
