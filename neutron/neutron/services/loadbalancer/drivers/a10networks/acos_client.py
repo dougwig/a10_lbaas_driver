@@ -18,11 +18,11 @@
 This file is specifically for managing the API connection to
 """
 
-
 import hashlib
-import httplib
 import json
+import ssl
 import traceback
+import urllib3
 
 import request_struct_v2
 import a10_exceptions as a10_ex
@@ -30,8 +30,20 @@ import a10_exceptions as a10_ex
 from ConfigParser import ConfigParser
 from neutron.openstack.common import log as logging
 
-
+# Neutron logs
 LOG=logging.getLogger(__name__)
+
+# # Mixin logs from subsystems that are handy for debugging
+# class ForwardingHandler(logging.Handler):
+#     def __init__(self, destination_logger):
+#         logging.Handler.__init__(self)
+#         self.destination_logger = destination_logger
+#     def emit(self, record):
+#         self.destination_logger.handle(record)
+
+# urllib3_logger = logging.getLogger('urllib3')
+# urllib3_logger.addHandler(ForwardingHandler(LOG))
+
 device_config = ConfigParser()
 device_config.read('/etc/neutron/services/loadbalancer/'
                                     'a10networks/a10networks_config.ini')
@@ -41,31 +53,89 @@ class A10Client():
     def __init__(self, tenant_id= ""):
         LOG.info("A10Client init: tenant_id=%s", tenant_id)
         self.device_info=self.select_device(tenant_id = tenant_id)
+        self.set_base_url()
+
+        self.force_tlsv1 = False
         self.session_id = None
-        self.get_session_id(tenant_id=tenant_id)
+        self.get_session_id()
         if self.session_id == None:
-            msg = "A10Client: unable to get session_id from ax"
+            msg = _("A10Client: unable to get session_id from ax")
             LOG.error(msg)
             raise a10_ex.A10ThunderNoSession()
+
         self.tenant_id = tenant_id
         LOG.info("A10Client init: successfully connected, session_id=%s", 
                   self.session_id)
 
-    def get_session_id(self, tenant_id= ""):
+
+    def set_base_url(self):
+        protocol = "https"
+        host = ""
+        port = "443"
+
+        if "protocol" in self.device_info:
+            protocol = self.device_info['protocol']
+        elif port == "80":
+            protocol = "http"
+
+        host = self.device_info['host']
+
+        if "port" in self.device_info:
+            port = self.device_info['port']
+
+        port = int(port)
+
+        self.base_url = "%s://%s:%d" % (protocol, host, port)
+
+
+    def axapi_http(self, method, api_url, params={}):
+        if self.force_tlsv1:
+            http = urllib3.PoolManager(ssl_version=ssl.PROTOCOL_TLSv1,
+                                       cert_reqs='CERT_NONE',
+                                       assert_hostname=False)
+        else:
+            http = urllib3.PoolManager()
+
+        headers = {
+            "Content-Type": "application/json",
+            "User-Agent": "OS-LBaaS-AGENT"
+        }
+
+        url = self.base_url + api_url
+        payload = json.dumps(params, encoding='utf-8')
+        r = http.urlopen(method, url, body=payload, headers=headers)
+
+        LOG.debug("axapi_http: data = %s", r.data)
+
+        xmlok = '<?xml version="1.0" encoding="utf-8" ?><response status="ok"></response>'
+        if r.data == xmlok:
+            return {'response': {'status': 'OK'}}
+
+        return json.loads(r.data)
+
+
+    def get_session_id(self):
+        auth_url = "/services/rest/v2.1/?format=json&method=authenticate"
+        params = {
+            "username": self.device_info['username'],
+            "password": self.device_info['password']
+        }
+
         try:
-            response = self.send(method = "POST",
-                                 url = "/services/rest/v2.1/?"
-                                       "format=json&method=authenticate",
-                                 body = {"username":
-                                             self.device_info['username'],
-                                         "password":
-                                             self.device_info['password']},
-                                 new_session = 2)
-            self.session_id = response['session_id']
+            r = self.axapi_http("POST", auth_url, params)
+            self.session_id = r['session_id']
+
         except Exception, e:
-            LOG.debug("get_session_id failed: %s", e)
-            LOG.debug(traceback.format_exc())
-            self.session_id = None
+            tlsv1_error = "SSL23_GET_SERVER_HELLO:tlsv1 alert protocol version"
+            if self.force_tlsv1 == False and str(e).find(tlsv1_error) >= 0:
+                # workaround ssl version
+                self.force_tlsv1 = True
+                self.get_session_id()
+            else:
+                LOG.debug("get_session_id failed: %s", e)
+                LOG.debug(traceback.format_exc())
+                self.session_id = None
+
 
     def partition(self, tenant_id = ""):
         if self.device_info['v_method'].lower() == 'adp':
@@ -97,70 +167,24 @@ class A10Client():
                 raise a10_ex.SearchError(term = "Partition Discovery for %s"
                                                % tenant_id[0:13])
 
-    def send(self, tenant_id="", method="", url="", body="", new_session=0):
+    def send(self, tenant_id="", method="", url="", body={}, new_session=0):
         if self.session_id is None and new_session != 2:
-            self.get_session_id(tenant_id=tenant_id)
+            self.get_session_id()
         if new_session != 2 and new_session !=4 and new_session != 3:
             self.partition(tenant_id=tenant_id)
 
-        header = {"Content-Type": "application/json",
-                  "User-Agent": "OS-LBaaS-AGENT"}
-
-        c = self.device_info
-        axapi_host = c['host']
-
-        if 'port' in c:
-            axapi_port = int(c['port'])
-        else:
-            axapi_port = 443
-
-        http_conn = httplib.HTTPSConnection
-        axapi_protocol = 'https'
-        if axapi_port == 80 or ('protocol' in c and c['protocol'] == 'http'):
-            http_conn = httplib.HTTPConnection
-            axapi_protocol = 'http'
-
-        LOG.debug("ax_url = %s://%s:%d/", axapi_protocol, axapi_host, axapi_port)
-        req = http_conn(axapi_host, axapi_port)
-
         if url.find('%') >= 0 and self.session_id != None:
-            LOG.debug("url = ++%s++", url)
-            LOG.debug("sid = ++%s++", self.session_id)
             url = url % self.session_id
 
-        if len(body) == 0:
-            data = None
-        else:
-            data = json.dumps(body, encoding='utf-8')
+        r = self.axapi_http(method, url, body)
 
-        LOG.debug('>>> %s %s, %s, %s' % (method, url, data, header))
-        req.request(method, url, data, header)
+        if new_session == 0 or new_session == 1 or new_session == 3:
+            LOG.debug("about to close session after req")
+            self.close_session(tenant_id= tenant_id)
+            LOG.debug("session closed")
 
-        try:
-            z = req.getresponse()
-            response = z.read()
-        finally:
-            LOG.debug('<<< %s %s', z.status, z.reason)
-
-        LOG.debug('<<< %s', response)
-        try:
-            r_obj = json.loads(response, encoding = 'utf-8')
-        except Exception, e:
-            xmlok = '<?xml version="1.0" encoding="utf-8" ?><response status="ok"></response>'
-            if response == xmlok:
-                LOG.debug("using xml hack to fake a json dict")
-                r_obj = {'response': {'status': 'OK'}}
-            else:
-                LOG.debug("returning bare http string")
-                r_obj = response
-        finally:
-            if new_session == 0 or new_session == 1 or new_session == 3:
-                LOG.debug("about to close session")
-                self.close_session(tenant_id= tenant_id)
-                LOG.debug("session closed")
-
-        LOG.debug('response = %s', response)
-        return r_obj
+        LOG.debug('response = %s', r)
+        return r
 
 
     def close_session(self, tenant_id = ""):
@@ -216,7 +240,7 @@ class A10Client():
         req_info = (request_struct_v2.PARTITION_OBJ.call.delete.toDict()
                     .items())
         self.close_session(tenant_id=self.tenant_id)
-        self.get_session_id(tenant_id = self.tenant_id)
+        self.get_session_id()
         return self.send(tenant_id = tenant_id, method = req_info[0][0],
                          url = req_info[0][1] % self.session_id,
                          body = {"name": self.tenant_id[0:13]},
