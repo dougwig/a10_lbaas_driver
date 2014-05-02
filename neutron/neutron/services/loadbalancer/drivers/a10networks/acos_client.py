@@ -22,6 +22,8 @@ This file is specifically for managing the API connection to
 import hashlib
 import httplib
 import json
+import traceback
+
 import request_struct_v2
 import a10_exceptions as a10_ex
 
@@ -29,8 +31,6 @@ from ConfigParser import ConfigParser
 from neutron.openstack.common import log as logging
 
 
-
-DEBUG=True
 LOG=logging.getLogger(__name__)
 device_config = ConfigParser()
 device_config.read('/etc/neutron/services/loadbalancer/'
@@ -39,9 +39,17 @@ device_config.read('/etc/neutron/services/loadbalancer/'
 class A10Client():
 
     def __init__(self, tenant_id= ""):
+        LOG.info("A10Client init: tenant_id=%s", tenant_id)
         self.device_info=self.select_device(tenant_id = tenant_id)
+        self.session_id = None
         self.get_session_id(tenant_id=tenant_id)
+        if self.session_id == None:
+            msg = "A10Client: unable to get session_id from ax"
+            LOG.error(msg)
+            raise a10_ex.A10ThunderNoSession()
         self.tenant_id = tenant_id
+        LOG.info("A10Client init: successfully connected, session_id=%s", 
+                  self.session_id)
 
     def get_session_id(self, tenant_id= ""):
         try:
@@ -53,9 +61,10 @@ class A10Client():
                                          "password":
                                              self.device_info['password']},
                                  new_session = 2)
-
             self.session_id = response['session_id']
-        except:
+        except Exception, e:
+            LOG.debug("get_session_id failed: %s", e)
+            LOG.debug(traceback.format_exc())
             self.session_id = None
 
     def partition(self, tenant_id = ""):
@@ -66,26 +75,29 @@ class A10Client():
                     try:
                         self.partition_active(tenant_id = tenant_id)
                     except:
-                       raise a10_ex.ParitionActiveError(
+                        LOG.debug(traceback.format_exc())
+                        raise a10_ex.PartitionActiveError(
                            partition = tenant_id[0:13])
                 else:
                     try:
                         self.partition_create(tenant_id = tenant_id)
                     except:
-                        raise a10_ex.ParitionCreateError(
+                        LOG.debug(traceback.format_exc())
+                        raise a10_ex.PartitionCreateError(
                            partition = tenant_id[0:13])
                     finally:
                         try:
                             self.partition_active(tenant_id = tenant_id)
                         except:
-                            raise a10_ex.ParitionActiveError(
+                            LOG.debug(traceback.format_exc())
+                            raise a10_ex.PartitionActiveError(
                                partition = tenant_id[0:13])
             except:
-               raise a10_ex.SearchError(term = "Partition Discovery for %s"
+                LOG.debug(traceback.format_exc())
+                raise a10_ex.SearchError(term = "Partition Discovery for %s"
                                                % tenant_id[0:13])
 
-    def send(self, tenant_id= "", method = "", url = "", body = "",
-             new_session = 0):
+    def send(self, tenant_id="", method="", url="", body="", new_session=0):
         if self.session_id is None and new_session != 2:
             self.get_session_id(tenant_id=tenant_id)
         if new_session != 2 and new_session !=4 and new_session != 3:
@@ -94,47 +106,65 @@ class A10Client():
         header = {"Content-Type": "application/json",
                   "User-Agent": "OS-LBaaS-AGENT"}
 
-        if 'port' in self.device_info:
-            axapi_port = int(self.device_info['port'])
-        elif DEBUG is True:
-            axapi_port = 80
+        c = self.device_info
+        axapi_host = c['host']
+
+        if 'port' in c:
+            axapi_port = int(c['port'])
         else:
             axapi_port = 443
 
-        req = httplib.HTTPConnection(self.device_info['host'], axapi_port)
+        http_conn = httplib.HTTPSConnection
+        axapi_protocol = 'https'
+        if axapi_port == 80 or ('protocol' in c and c['protocol'] == 'http'):
+            http_conn = httplib.HTTPConnection
+            axapi_protocol = 'http'
 
-        try:
+        LOG.debug("ax_url = %s://%s:%d/", axapi_protocol, axapi_host, axapi_port)
+        req = http_conn(axapi_host, axapi_port)
+
+        if url.find('%') >= 0 and self.session_id != None:
+            LOG.debug("url = ++%s++", url)
+            LOG.debug("sid = ++%s++", self.session_id)
             url = url % self.session_id
-        except:
-           LOG.debug(_("Could not get Session ID"))
+
         if len(body) == 0:
             data = None
         else:
             data = json.dumps(body, encoding='utf-8')
+
+        LOG.debug('>>> %s %s, %s, %s' % (method, url, data, header))
         req.request(method, url, data, header)
-        response = req.getresponse().read()
-        print "HOST--->", self.device_info['host']
-        print "URL---->", url
-        print "BODY---->", body
-        print "new_SESSION--->", new_session
-        print "RESPONSE---->", response
+
+        try:
+            z = req.getresponse()
+            response = z.read()
+        finally:
+            LOG.debug('<<< %s %s', z.status, z.reason)
+
+        LOG.debug('<<< %s', response)
         try:
             r_obj = json.loads(response, encoding = 'utf-8')
-
-        except:
-            r_obj = response
-
+        except Exception, e:
+            xmlok = '<?xml version="1.0" encoding="utf-8" ?><response status="ok"></response>'
+            if response == xmlok:
+                LOG.debug("using xml hack to fake a json dict")
+                r_obj = {'response': {'status': 'OK'}}
+            else:
+                LOG.debug("returning bare http string")
+                r_obj = response
         finally:
             if new_session == 0 or new_session == 1 or new_session == 3:
+                LOG.debug("about to close session")
                 self.close_session(tenant_id= tenant_id)
+                LOG.debug("session closed")
 
-            return r_obj
-
+        LOG.debug('response = %s', response)
+        return r_obj
 
 
     def close_session(self, tenant_id = ""):
-        response = self.partition_active(tenant_id = tenant_id, default =
-        True)
+        response = self.partition_active(tenant_id=tenant_id, default=True)
         if "response" in response:
             if 'status' in response['response']:
                 if response['response']['status'] == "OK":
@@ -210,7 +240,7 @@ class A10Client():
         devices = {}
         for i in device_config.items('a10networks'):
             devices[i[0]] = i[1].replace("\n", "", len(i[1]))
-        #print "DEVICES_DICT--->", devices
+        LOG.debug("DEVICES_DICT--->", devices)
         nodes = 256
         #node_prefix = "a10"
         node_list = []
@@ -220,7 +250,7 @@ class A10Client():
             x += 1
         z = 0
         key_list = devices.keys()
-        #print "THIS IS THE KEY LIST", key_list
+        LOG.debug("THIS IS THE KEY LIST", key_list)
         while z < nodes:
             for key in key_list:
                 key_index = int(hashlib.sha256(key).hexdigest(), 16)
@@ -231,7 +261,7 @@ class A10Client():
                 else:
                     result = result + 1
                 stored_obj = json.loads(devices[key])
-                #print "THIS IS THE STORE OBJECT---->", stored_obj
+                LOG.debug("THIS IS THE STORE OBJECT---->", repr(stored_obj))
                 node_list[result][1].insert(result, stored_obj)
 
             z += 1
@@ -239,12 +269,12 @@ class A10Client():
         limit = 256
         th = tenant_hash
         for i in range(0, limit):
-            print "NODE_LENGTH------>", len(node_list[th % nodes][1])
+            LOG.debug("NODE_LENGTH------>", len(node_list[th % nodes][1]))
             if len(node_list[th % nodes][1]) > 0:
                 node_tenant_mod = tenant_hash % len(node_list[th % nodes][1])
-                print "node_tenant_mod--->",node_tenant_mod
+                LOG.debug("node_tenant_mod--->",node_tenant_mod)
                 device_info = node_list[th % nodes][1][node_tenant_mod]
-                print "DEVICE_INFO---->", device_info
+                LOG.debug("DEVICE_INFO---->", device_info['host'])
                 device_info['tenant_id'] = tenant_id
                 break
             th = th + 1
