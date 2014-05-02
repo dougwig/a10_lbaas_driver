@@ -26,6 +26,10 @@ class A10ThunderNoSession(exceptions.NeutronException):
     msg = _('Unable to get session id from appliance')
 
 
+class A10ThunderVersionMismatch(exceptions.NeutronException):
+    msg = _("A10Client: driver requires ACOS version 2.7.2+")
+
+
 class UnsupportedFeatureAppCookie(exceptions.NeutronException):
     msg = _(
         'This version of the driver does not support this'

@@ -20,6 +20,7 @@ This file is specifically for managing the API connection to
 
 import hashlib
 import json
+import re
 import ssl
 import traceback
 import urllib3
@@ -51,6 +52,7 @@ class A10Client():
             msg = _("A10Client: unable to get session_id from ax")
             LOG.error(msg)
             raise a10_ex.A10ThunderNoSession()
+        self.check_version()
 
         self.tenant_id = tenant_id
         LOG.info("A10Client init: successfully connected, session_id=%s", 
@@ -93,7 +95,11 @@ class A10Client():
         LOG.debug("axapi_http: params = %s", params)
 
         url = self.base_url + api_url
-        payload = json.dumps(params, encoding='utf-8')
+        if params:
+            payload = json.dumps(params, encoding='utf-8')
+        else:
+            payload = None
+
         r = http.urlopen(method, url, body=payload, headers=headers)
 
         LOG.debug("axapi_http: data = %s", r.data)
@@ -126,6 +132,29 @@ class A10Client():
                 LOG.debug("get_session_id failed: %s", e)
                 LOG.debug(traceback.format_exc())
                 self.session_id = None
+
+
+    def check_version(self):
+        if 'skip_version_check' in self.device_info:
+            if self.device_info['skip_version_check']:
+                return
+
+        info_url = ( "/services/rest/v2.1/?format=json&session_id=%s" 
+                     "&method=system.information.get" % self.session_id )
+
+        r = self.axapi_http("GET", info_url)
+
+        x = r['system_information']['software_version'].split('.')
+        major = int(x[0])
+        minor = int(x[1])
+        dot = 0
+        m = re.match("^(\d+)", x[2])
+        if m != None:
+          dot = int(m.group(1))
+
+        if major < 2 or minor < 7 or dot < 2:
+            LOG.error(_("A10Client: driver requires ACOS version 2.7.2+"))
+            raise a10_ex.A10ThunderVersionMismatch()
 
 
     def partition(self, tenant_id = ""):
