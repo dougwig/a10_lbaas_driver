@@ -33,17 +33,6 @@ from neutron.openstack.common import log as logging
 # Neutron logs
 LOG=logging.getLogger(__name__)
 
-# # Mixin logs from subsystems that are handy for debugging
-# class ForwardingHandler(logging.Handler):
-#     def __init__(self, destination_logger):
-#         logging.Handler.__init__(self)
-#         self.destination_logger = destination_logger
-#     def emit(self, record):
-#         self.destination_logger.handle(record)
-
-# urllib3_logger = logging.getLogger('urllib3')
-# urllib3_logger.addHandler(ForwardingHandler(LOG))
-
 device_config = ConfigParser()
 device_config.read('/etc/neutron/services/loadbalancer/'
                                     'a10networks/a10networks_config.ini')
@@ -100,6 +89,8 @@ class A10Client():
             "Content-Type": "application/json",
             "User-Agent": "OS-LBaaS-AGENT"
         }
+
+        LOG.debug("axapi_http: params = %s", params)
 
         url = self.base_url + api_url
         payload = json.dumps(params, encoding='utf-8')
