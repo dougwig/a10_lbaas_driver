@@ -38,10 +38,13 @@ device_config = ConfigParser()
 device_config.read('/etc/neutron/services/loadbalancer/'
                                     'a10networks/a10networks_config.ini')
 
+VERSION = "0.2.2"
+
 class A10Client():
 
     def __init__(self, tenant_id= ""):
-        LOG.info("A10Client init: tenant_id=%s", tenant_id)
+        LOG.info("A10Client init: driver_version=%s, tenant_id=%s",
+                 VERSION, tenant_id)
         self.device_info=self.select_device(tenant_id = tenant_id)
         self.set_base_url()
 
