@@ -528,7 +528,7 @@ class ThunderDriver(LoadBalancerPlugin):
                     body = {'name': server_name}):
 
                 server_ds['server']['name']=server_name
-                server_ds['server']['host']=member['address']
+                server_ds['server']['host']=member_ds['address']
                 if (self.inspect_response(self.device.send(
                         tenant_id = member['tenant_id'],
                         method = server_create_req[0][0],
