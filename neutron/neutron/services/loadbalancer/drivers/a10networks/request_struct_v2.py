@@ -17,7 +17,8 @@ import copy
 
 
 class wrapper(object):
-    def __init__(self, d = None, create = True):
+
+    def __init__(self, d=None, create=True):
         if d is None:
             d = {}
         supr = super(wrapper, self)
@@ -90,7 +91,7 @@ server_json_obj = wrapper(copy.deepcopy({
                                            "?format=json&method=slb."
                                            "server."
                                            "fetchAllStatistics&session_id=%s"}
-    },
+             },
     "ds": {
         "server": {
             "name": "",
@@ -131,7 +132,7 @@ server_port_list_obj = wrapper(copy.deepcopy({
                                    "method=slb.server.port."
                                    "updateAll&session_id=%s"}
 
-    },
+             },
     "ds": {
         "port_num": '1-65535',
         "protocol": {'TCP': 2, 'UDP': 3},
@@ -178,7 +179,7 @@ service_group_json_obj = wrapper(copy.deepcopy({
                  "GET": "/services/rest/v2.1/?format=json&"
                         "method=slb.service_group."
                         "fetchAllStatistics&session_id=%s"}
-    },
+             },
     "ds": {
         "service_group": {
             "name": "",
@@ -231,10 +232,10 @@ service_group_member_obj = wrapper(copy.deepcopy({
              "updateall": {"POST": "/services/rest/v2.1/?format=json&"
                                    "method=slb.service_group.member."
                                    "updateAll&session_id=%s"}
-    },
+             },
     "ds": {"name": "",
            "member": {"server": "", "port": "", "status": "1"}
-    }
+           }
 }))
 
 '''
@@ -265,7 +266,7 @@ virtual_server_object = wrapper(copy.deepcopy({
                  "GET": "/services/rest/v2.1/?format=json&method=slb."
                         "virtual_server.fetchAllStatistics&"
                         "session_id=%s"}
-    },
+             },
     "ds": {"virtual_server": {
         "status": 1,
         "disable_vserver_on_condition": 0,
@@ -293,23 +294,23 @@ ICMP HM Object
 '''
 
 ICMP_HM_OBJ = wrapper(copy.deepcopy({
-"call": {"create": {"POST": "/services/rest/v2.1/?format=json&"
-                            "method=slb.hm.create&session_id=%s"},
-         "update": {"POST": "/services/rest/v2.1/?format="
-                            "json&method=slb.hm.update&"
-                            "session_id=%s"},
-         "delete": {"POST": "/services/rest/v2.1/?format="
-                            "json&method=slb.hm.delete&session_id=%s"}
-},
-"ds": {
-'retry': 3,
-'name': u'http_foo3',
-'consec_pass_reqd': 1,
-'interval': 5,
-'timeout': 5,
-'disable_after_down': 0,
-'type': 0,
-}
+    "call": {"create": {"POST": "/services/rest/v2.1/?format=json&"
+                        "method=slb.hm.create&session_id=%s"},
+             "update": {"POST": "/services/rest/v2.1/?format="
+                        "json&method=slb.hm.update&"
+                        "session_id=%s"},
+             "delete": {"POST": "/services/rest/v2.1/?format="
+                        "json&method=slb.hm.delete&session_id=%s"}
+             },
+    "ds": {
+        'retry': 3,
+        'name': u'http_foo3',
+        'consec_pass_reqd': 1,
+        'interval': 5,
+        'timeout': 5,
+        'disable_after_down': 0,
+        'type': 0,
+    }
 }))
 
 '''
@@ -317,23 +318,23 @@ TCP HM Object
 '''
 
 TCP_HM_OBJ = wrapper(copy.deepcopy({
-"call": {"create": {"POST": "/services/rest/v2.1/?format=json&"
-                            "method=slb.hm.create&session_id=%s"},
-         "update": {"POST": "/services/rest/v2.1/?format="
-                            "json&method=slb.hm.update&"
-                            "session_id=%s"},
-         "delete": {"POST": "/services/rest/v2.1/?format="
-                            "json&method=slb.hm.delete&session_id=%s"}
-},
-"ds": {
-'retry': 3,
-'name': u'http_foo3',
-'consec_pass_reqd': 1,
-'interval': 5,
-'timeout': 5,
-'disable_after_down': 0,
-'type': 1,
-}
+    "call": {"create": {"POST": "/services/rest/v2.1/?format=json&"
+                        "method=slb.hm.create&session_id=%s"},
+             "update": {"POST": "/services/rest/v2.1/?format="
+                        "json&method=slb.hm.update&"
+                        "session_id=%s"},
+             "delete": {"POST": "/services/rest/v2.1/?format="
+                        "json&method=slb.hm.delete&session_id=%s"}
+             },
+    "ds": {
+        'retry': 3,
+        'name': u'http_foo3',
+        'consec_pass_reqd': 1,
+        'interval': 5,
+        'timeout': 5,
+        'disable_after_down': 0,
+        'type': 1,
+    }
 }))
 
 '''
@@ -347,7 +348,7 @@ HTTP_HM_OBJ = wrapper(copy.deepcopy({
                                 "session_id=%s"},
              "delete": {"POST": "/services/rest/v2.1/?format="
                                 "json&method=slb.hm.delete&session_id=%s"}
-    },
+             },
     "ds": {
         'retry': 3,
         'http': {
@@ -375,7 +376,7 @@ HTTPS_HM_OBJ = wrapper(copy.deepcopy({
                                 "session_id=%s"},
              "delete": {"POST": "/services/rest/v2.1/?format=json&"
                                 "method=slb.hm.delete&session_id=%s"}
-    },
+             },
     "ds": {
         'retry': 3,
         'https': {
@@ -407,7 +408,7 @@ COOKIE_PER_TEMP_OBJ = wrapper(copy.deepcopy({
              "search": {"POST": "/services/rest/v2.1/?format=json&"
                                 "method=slb.template.cookie_persistence."
                                 "search&session_id=%s"}
-    },
+             },
     "ds": {
         "cookie_persistence_template": {
             "name": "",
@@ -463,8 +464,8 @@ paritionObject
 PARTITION_OBJ = wrapper(copy.deepcopy({
     "call": {
         "active": {"POST":
-                       "/services/rest/v2.1/?format=json&method=system."
-                       "partition.active&session_id=%s"},
+                   "/services/rest/v2.1/?format=json&method=system."
+                   "partition.active&session_id=%s"},
         "create": {"POST": "/services/rest/v2.1/?format=json&method=system."
                            "partition.create&session_id=%s"},
         "update": {"POST": "/services/rest/v2.1/?format=json&method=system."
@@ -505,7 +506,7 @@ vport_HTTP_obj = wrapper(copy.deepcopy({
              "fetchallstatistics": {
                  "GET": "/services/rest/v2.1/?format=json&method=slb."
                         "virtual_service.fetchAllStatistics&session_id=%s"}
-    },
+             },
     "ds": {
         "protocol": 11,
         "sync_cookie": {
@@ -564,7 +565,7 @@ vport_HTTPS_obj = wrapper(copy.deepcopy({
              "fetchallstatistics": {
                  "GET": "/services/rest/v2.1/?format=json&method=slb."
                         "virtual_service.fetchAllStatistics&session_id=%s"}
-    },
+             },
     "ds": {
         "protocol": 12,
         "sync_cookie": {
@@ -624,7 +625,7 @@ vport_TCP_obj = wrapper(copy.deepcopy({
              "fetchallstatistics": {
                  "GET": "/services/rest/v2.1/?format=json&method=slb."
                         "virtual_service.fetchAllStatistics&session_id=%s"}
-    },
+             },
     "ds": {
         "protocol": 2,
         "sync_cookie": {
@@ -660,5 +661,3 @@ vport_TCP_obj = wrapper(copy.deepcopy({
         "acl_natpool_binding_list": []
     }
 }))
-
-

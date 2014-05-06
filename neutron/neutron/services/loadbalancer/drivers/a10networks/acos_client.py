@@ -32,35 +32,35 @@ from ConfigParser import ConfigParser
 from neutron.openstack.common import log as logging
 
 # Neutron logs
-LOG=logging.getLogger(__name__)
+LOG = logging.getLogger(__name__)
 
 device_config = ConfigParser()
 device_config.read('/etc/neutron/services/loadbalancer/'
-                                    'a10networks/a10networks_config.ini')
+                   'a10networks/a10networks_config.ini')
 
 VERSION = "0.2.2"
 
+
 class A10Client():
 
-    def __init__(self, tenant_id= ""):
+    def __init__(self, tenant_id=""):
         LOG.info("A10Client init: driver_version=%s, tenant_id=%s",
                  VERSION, tenant_id)
-        self.device_info=self.select_device(tenant_id = tenant_id)
+        self.device_info = self.select_device(tenant_id=tenant_id)
         self.set_base_url()
 
         self.force_tlsv1 = False
         self.session_id = None
         self.get_session_id()
-        if self.session_id == None:
+        if self.session_id is None:
             msg = _("A10Client: unable to get session_id from ax")
             LOG.error(msg)
             raise a10_ex.A10ThunderNoSession()
         self.check_version()
 
         self.tenant_id = tenant_id
-        LOG.info("A10Client init: successfully connected, session_id=%s", 
-                  self.session_id)
-
+        LOG.info("A10Client init: successfully connected, session_id=%s",
+                 self.session_id)
 
     def set_base_url(self):
         protocol = "https"
@@ -80,7 +80,6 @@ class A10Client():
         port = int(port)
 
         self.base_url = "%s://%s:%d" % (protocol, host, port)
-
 
     def axapi_http(self, method, api_url, params={}):
         if self.force_tlsv1:
@@ -107,12 +106,12 @@ class A10Client():
 
         LOG.debug("axapi_http: data = %s", r.data)
 
-        xmlok = '<?xml version="1.0" encoding="utf-8" ?><response status="ok"></response>'
+        xmlok = ('<?xml version="1.0" encoding="utf-8" ?>'
+                 '<response status="ok"></response>')
         if r.data == xmlok:
             return {'response': {'status': 'OK'}}
 
         return json.loads(r.data)
-
 
     def get_session_id(self):
         auth_url = "/services/rest/v2.1/?format=json&method=authenticate"
@@ -127,7 +126,7 @@ class A10Client():
 
         except Exception, e:
             tlsv1_error = "SSL23_GET_SERVER_HELLO:tlsv1 alert protocol version"
-            if self.force_tlsv1 == False and str(e).find(tlsv1_error) >= 0:
+            if self.force_tlsv1 is False and str(e).find(tlsv1_error) >= 0:
                 # workaround ssl version
                 self.force_tlsv1 = True
                 self.get_session_id()
@@ -136,14 +135,13 @@ class A10Client():
                 LOG.debug(traceback.format_exc())
                 self.session_id = None
 
-
     def check_version(self):
         if 'skip_version_check' in self.device_info:
             if self.device_info['skip_version_check']:
                 return
 
-        info_url = ( "/services/rest/v2.1/?format=json&session_id=%s" 
-                     "&method=system.information.get" % self.session_id )
+        info_url = ("/services/rest/v2.1/?format=json&session_id=%s"
+                    "&method=system.information.get" % self.session_id)
 
         r = self.axapi_http("GET", info_url)
 
@@ -152,95 +150,92 @@ class A10Client():
         minor = int(x[1])
         dot = 0
         m = re.match("^(\d+)", x[2])
-        if m != None:
-          dot = int(m.group(1))
+        if m is not None:
+            dot = int(m.group(1))
 
         if major < 2 or minor < 7 or dot < 2:
             LOG.error(_("A10Client: driver requires ACOS version 2.7.2+"))
             raise a10_ex.A10ThunderVersionMismatch()
 
-
-    def partition(self, tenant_id = ""):
+    def partition(self, tenant_id=""):
         if self.device_info['v_method'].lower() == 'adp':
             try:
-                p_search=self.partition_search(tenant_id = tenant_id)
+                p_search = self.partition_search(tenant_id=tenant_id)
                 if p_search is True:
                     try:
-                        self.partition_active(tenant_id = tenant_id)
+                        self.partition_active(tenant_id=tenant_id)
                     except:
                         LOG.debug(traceback.format_exc())
                         raise a10_ex.PartitionActiveError(
-                           partition = tenant_id[0:13])
+                            partition=tenant_id[0:13])
                 else:
                     try:
-                        self.partition_create(tenant_id = tenant_id)
+                        self.partition_create(tenant_id=tenant_id)
                     except:
                         LOG.debug(traceback.format_exc())
                         raise a10_ex.PartitionCreateError(
-                           partition = tenant_id[0:13])
+                            partition=tenant_id[0:13])
                     finally:
                         try:
-                            self.partition_active(tenant_id = tenant_id)
+                            self.partition_active(tenant_id=tenant_id)
                         except:
                             LOG.debug(traceback.format_exc())
                             raise a10_ex.PartitionActiveError(
-                               partition = tenant_id[0:13])
+                                partition=tenant_id[0:13])
             except:
                 LOG.debug(traceback.format_exc())
-                raise a10_ex.SearchError(term = "Partition Discovery for %s"
-                                               % tenant_id[0:13])
+                raise a10_ex.SearchError(term="Partition Discovery for %s"
+                                         % tenant_id[0:13])
 
     def send(self, tenant_id="", method="", url="", body={}, new_session=0):
         if self.session_id is None and new_session != 2:
             self.get_session_id()
-        if new_session != 2 and new_session !=4 and new_session != 3:
+        if new_session != 2 and new_session != 4 and new_session != 3:
             self.partition(tenant_id=tenant_id)
 
-        if url.find('%') >= 0 and self.session_id != None:
+        if url.find('%') >= 0 and self.session_id is not None:
             url = url % self.session_id
 
         r = self.axapi_http(method, url, body)
 
         if new_session == 0 or new_session == 1 or new_session == 3:
             LOG.debug("about to close session after req")
-            self.close_session(tenant_id= tenant_id)
+            self.close_session(tenant_id=tenant_id)
             LOG.debug("session closed")
 
         LOG.debug('response = %s', r)
         return r
 
-
-    def close_session(self, tenant_id = ""):
+    def close_session(self, tenant_id=""):
         response = self.partition_active(tenant_id=tenant_id, default=True)
         if "response" in response:
             if 'status' in response['response']:
                 if response['response']['status'] == "OK":
-                    results = self.send(tenant_id = tenant_id,
-                                method = "POST",url = "/services/rest/"
-                                "v2.1/?format=json&method=session"
-                                ".close&session_id=%s"%self.session_id,
-                                body={"session_id":self.session_id},
-                                new_session = 2)
+                    url = ("/services/rest/v2.1/?format=json&method=session"
+                           ".close&session_id=%s" % self.session_id)
+                    results = self.send(tenant_id=tenant_id,
+                                        method="POST", url=url,
+                                        body={"session_id": self.session_id},
+                                        new_session=2)
                     if results['response']['status'] == "OK":
-                        self.session_id=None
+                        self.session_id = None
 
-
-    def write_memory(self, tenant_id = ""):
-        return self.send(tenant_id = tenant_id,
-                         method = "GET",
-                         url = (
-                         "/services/rest/v2.1/?format=json&method=system"
-                         ".action"
-                         ".write_memory&session_id=%s" % self.session_id),
+    def write_memory(self, tenant_id=""):
+        return self.send(tenant_id=tenant_id,
+                         method="GET",
+                         url=(
+                             "/services/rest/v2.1/?format=json&method=system"
+                             ".action"
+                             ".write_memory&session_id=%s" % self.session_id),
                          new_session = 4)
 
-    def partition_search(self, tenant_id = ""):
+    def partition_search(self, tenant_id=""):
         req_info = (request_struct_v2.PARTITION_OBJ.call.search.toDict()
                     .items())
-        response = self.send(tenant_id = tenant_id, method = req_info[0][0],
-                             url = req_info[0][1] % self.session_id,
-                             body = {"name": self.tenant_id[0:13]},
-                             new_session = 4)
+        response = self.send(tenant_id=tenant_id, method=req_info[0][0],
+                             url=req_info[0][1] % self.session_id,
+                             body={"name": self.tenant_id[0:13]},
+                             new_session=4)
         if 'response' in response:
             if "err" in response['response']:
                 if response['response']['err'] == 520749062:
@@ -248,48 +243,45 @@ class A10Client():
         elif "partition" in response:
             return True
 
-    def partition_create(self, tenant_id = ""):
+    def partition_create(self, tenant_id=""):
         req_info = (request_struct_v2.PARTITION_OBJ.call.create.toDict()
                     .items())
         obj = request_struct_v2.PARTITION_OBJ.ds.toDict()
         obj['partition']['name'] = tenant_id[0:13]
-        return self.send(tenant_id = tenant_id, method = req_info[0][0],
-                         url = req_info[0][1] % self.session_id,
-                         body = obj,
-                         new_session = 4)
+        return self.send(tenant_id=tenant_id, method=req_info[0][0],
+                         url=req_info[0][1] % self.session_id,
+                         body=obj,
+                         new_session=4)
 
-
-    def partition_delete(self, tenant_id = "", new_session = 3):
+    def partition_delete(self, tenant_id="", new_session=3):
         req_info = (request_struct_v2.PARTITION_OBJ.call.delete.toDict()
                     .items())
         self.close_session(tenant_id=self.tenant_id)
         self.get_session_id()
-        return self.send(tenant_id = tenant_id, method = req_info[0][0],
-                         url = req_info[0][1] % self.session_id,
-                         body = {"name": self.tenant_id[0:13]},
-                         new_session = new_session)
+        return self.send(tenant_id=tenant_id, method=req_info[0][0],
+                         url=req_info[0][1] % self.session_id,
+                         body={"name": self.tenant_id[0:13]},
+                         new_session=new_session)
 
-
-    def partition_active(self, tenant_id = "", default = False,
-                         new_session = 4):
+    def partition_active(self, tenant_id="", default=False,
+                         new_session=4):
         req_info = (request_struct_v2.PARTITION_OBJ.call.active.toDict()
                     .items())
         if default is True:
             name = "shared"
         else:
             name = tenant_id[0:13]
-        return self.send(tenant_id = tenant_id,method = req_info[0][0],
-                         url = req_info[0][1] % self.session_id,
-                         body = {"name": name}, new_session = new_session)
+        return self.send(tenant_id=tenant_id, method=req_info[0][0],
+                         url=req_info[0][1] % self.session_id,
+                         body={"name": name}, new_session=new_session)
 
-
-    def select_device(self, tenant_id = ""):
+    def select_device(self, tenant_id=""):
         devices = {}
         for i in device_config.items('a10networks'):
             devices[i[0]] = i[1].replace("\n", "", len(i[1]))
         LOG.debug("DEVICES_DICT--->", devices)
         nodes = 256
-        #node_prefix = "a10"
+        # node_prefix = "a10"
         node_list = []
         x = 0
         while x < nodes:
@@ -319,16 +311,10 @@ class A10Client():
             LOG.debug("NODE_LENGTH------>", len(node_list[th % nodes][1]))
             if len(node_list[th % nodes][1]) > 0:
                 node_tenant_mod = tenant_hash % len(node_list[th % nodes][1])
-                LOG.debug("node_tenant_mod--->",node_tenant_mod)
+                LOG.debug("node_tenant_mod--->", node_tenant_mod)
                 device_info = node_list[th % nodes][1][node_tenant_mod]
                 LOG.debug("DEVICE_INFO---->", device_info['host'])
                 device_info['tenant_id'] = tenant_id
                 break
             th = th + 1
         return device_info
-
-
-
-
-
-
