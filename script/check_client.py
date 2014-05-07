@@ -3,7 +3,6 @@
 import logging
 import sys
 
-sys.path.insert(0, "./test")
 sys.path.insert(0, "./neutron/neutron/services/loadbalancer/drivers")
 
 from a10networks.acos_client import A10Client
