@@ -38,7 +38,7 @@ device_config = ConfigParser()
 device_config.read('/etc/neutron/services/loadbalancer/'
                    'a10networks/a10networks_config.ini')
 
-VERSION = "0.2.2"
+VERSION = "0.2.3"
 
 
 class A10Client():
@@ -275,11 +275,29 @@ class A10Client():
                          url=req_info[0][1] % self.session_id,
                          body={"name": name}, new_session=new_session)
 
-    def select_device(self, tenant_id=""):
-        devices = {}
+    def get_devices(self):
+        self.devices = {}
+
         for i in device_config.items('a10networks'):
-            devices[i[0]] = i[1].replace("\n", "", len(i[1]))
-        LOG.debug("DEVICES_DICT--->", devices)
+            key = i[0]
+            h = json.loads(i[1].replace("\n", "", len(i[1])))
+
+            status = False
+            if 'status' in h:
+                s = str(h['status'])
+                if s[0].upper() == 'T' or s[0] == '1':
+                    status = True
+            else:
+                status = True
+
+            if status:
+                self.devices[key] = h
+
+        LOG.debug("DEVICES_DICT---> %s", self.devices)
+
+    def select_device(self, tenant_id=""):
+        self.get_devices()
+
         nodes = 256
         # node_prefix = "a10"
         node_list = []
@@ -288,8 +306,8 @@ class A10Client():
             node_list.insert(x, (x, []))
             x += 1
         z = 0
-        key_list = devices.keys()
-        LOG.debug("THIS IS THE KEY LIST", key_list)
+        key_list = self.devices.keys()
+        LOG.debug("THIS IS THE KEY LIST %s", key_list)
         while z < nodes:
             for key in key_list:
                 key_index = int(hashlib.sha256(key).hexdigest(), 16)
@@ -299,21 +317,19 @@ class A10Client():
                     result = 0
                 else:
                     result = result + 1
-                stored_obj = json.loads(devices[key])
-                LOG.debug("THIS IS THE STORE OBJECT---->", repr(stored_obj))
-                node_list[result][1].insert(result, stored_obj)
+                node_list[result][1].insert(result, self.devices[key])
 
             z += 1
         tenant_hash = int(hashlib.sha256(tenant_id).hexdigest(), 16)
         limit = 256
         th = tenant_hash
         for i in range(0, limit):
-            LOG.debug("NODE_LENGTH------>", len(node_list[th % nodes][1]))
+            # LOG.debug("NODE_LENGTH------> %d", len(node_list[th % nodes][1]))
             if len(node_list[th % nodes][1]) > 0:
                 node_tenant_mod = tenant_hash % len(node_list[th % nodes][1])
-                LOG.debug("node_tenant_mod--->", node_tenant_mod)
+                LOG.debug("node_tenant_mod---> %s", node_tenant_mod)
                 device_info = node_list[th % nodes][1][node_tenant_mod]
-                LOG.debug("DEVICE_INFO---->", device_info['host'])
+                LOG.debug("DEVICE_INFO----> %s", device_info['host'])
                 device_info['tenant_id'] = tenant_id
                 break
             th = th + 1

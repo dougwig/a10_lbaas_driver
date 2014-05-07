@@ -114,7 +114,9 @@ In the example given below, we show various configuration options for every devi
 #         host:<IP|FQDN>
 #         username:acos user
 #         password:user password
-#         status: can be configued
+#         skip_version_check: True if driver verification of ACOS version
+#             should be skipped.  Default: false
+#         status: True if ax should be used, false otherwise.  Default: True
 #         autosnat: Source address translation is configured on the VIP.
 #         api_version: API version
 #         v_method: Choices in this version(ADP, LSI)
