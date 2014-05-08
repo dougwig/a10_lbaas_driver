@@ -1,0 +1,34 @@
+# Configuration for this neutron network node!
+
+import os
+
+PATH_TO_ADMIN_OPENRC = os.environ['HOME'] + '/admin-openrc.sh'
+PATH_TO_DEMO_OPENRC = os.environ['HOME'] + '/demo-openrc.sh'
+
+PRIVATE_NETWORK_NAME = 'demo-net'
+FLOAT_NETWORK_NAME = 'ext-net'
+
+MEMBER1_IP = '10.10.102.8'
+MEMBER2_IP = '10.10.102.9'
+
+AX21_HOST = '10.10.100.20'
+AX21_PORT = '8443'
+AX21_PROTOCOL = 'https'
+AX21_USERNAME = 'admin'
+AX21_PASSWORD = 'a10'
+
+
+def source_env(path):
+    for line in open(path):
+        name, value = line.split('=')
+        if name[:7] == "export ":
+            name = name[7:]
+        os.environ[name] = value.rstrip()
+
+
+def demo_creds():
+    source_env(PATH_TO_DEMO_OPENRC)
+
+
+def admin_creds():
+    source_env(PATH_TO_ADMIN_OPENRC)
