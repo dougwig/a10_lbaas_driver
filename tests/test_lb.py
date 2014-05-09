@@ -145,11 +145,26 @@ class AxSSH(object):
             trim.append(line)
         return trim
 
+    def config_gets(self):
+        return ''.join(self.config_get())
 
-ax = AxSSH("10.10.100.20", "admin", "a10")
-r = ax.config_get()
-print "acos return = ", r
-raise "foo"
+    def config_get_template(self, name):
+        f = open("tests/conf/%s.config" % name)
+        z = f.read()
+        f.close()
+        return z
+
+    def config_get_and_compare_to_template(self, name):
+        s = self.config_gets()
+        f = open('/tmp/axcfg.out.%s' % os.environ['USER'], 'w')
+        f.write(s)
+        f.close()
+        assert self.config_get_template(name) == s
+
+
+def verify_ax(template_name='base'):
+    ax = AxSSH(AX21_HOST, AX21_USERNAME, AX21_PASSWORD)
+    ax.config_get_and_compare_to_template('base')
 
 
 #
@@ -170,6 +185,8 @@ demo_creds()
 
 def test_lb():
 
+    verify_ax()
+
     # Step 1, setup LB via neutron
 
     lb = NeutronLB()
@@ -184,6 +201,8 @@ def test_lb():
 
     # Step 2, grab the configuration from the AX and verify
 
+    verify_ax('lb')
+
     # Step 3, pull some data through the LB and verify
 
     members = {}
@@ -193,7 +212,7 @@ def test_lb():
     lb_data = requests.get("http://%s/" % todo).text
 
     matching_data = False
-    for ip, data in members:
+    for ip, data in members.items():
         if data == lb_data:
             matching_data = True
             break
