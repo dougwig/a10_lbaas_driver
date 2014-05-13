@@ -17,6 +17,9 @@ AX21_PROTOCOL = 'https'
 AX21_USERNAME = 'admin'
 AX21_PASSWORD = 'a10'
 
+USE_FLOAT = True
+AUTOSNAT = True
+
 
 def source_env(path):
     for line in open(path):

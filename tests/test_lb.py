@@ -63,11 +63,22 @@ class NeutronLB(object):
 
     def vip_create(self, port=80, protocol='HTTP'):
         self.vip_name = self._random_hex()
-        self._neutron(['lb-vip-create', '--name', self.vip_name,
-                       '--protocol', protocol, '--protocol-port', str(port),
-                       '--subnet-id', self.subnet_id, self.pool_name])
+        r = self._neutron(['lb-vip-create', '--name', self.vip_name,
+                           '--protocol', protocol,
+                           '--protocol-port', str(port),
+                           '--subnet-id', self.subnet_id, self.pool_name])
+        port_id = find(r, "^\| port_id.*\| ([^\s]+)")
+        self.vip_ip = find(r, "^\| address.*\| ([^\s]+)")
+        print "INTERNAL VIP_IP ", self.vip_ip
         self._wait_for_completion(['lb-vip-show', self.vip_name])
-        # echo TODO_MAYBE_ASSIGN_VIP_FLOAT
+
+        if USE_FLOAT:
+            r = self._neutron(['floatingip-create', FLOAT_NETWORK_NAME])
+            floating_id = find(r, "^\| id.*\| ([^\s]+)")
+            self.vip_ip = find(r, "^\| floating_ip_address.*\| ([^\s]+)")
+
+            r = self._neutron(['floatingip-associate', floating_id, port_id])
+            print "FLOATING VIP_IP ", self.vip_ip
 
     def member_create(self, ip_address, port=80):
         r = self._neutron(['lb-member-create', '--address', ip_address,
@@ -158,8 +169,6 @@ def verify_ax(template_name='base'):
 # Tests
 #
 
-demo_creds()
-
 # def test_pool_create():
 #     lb = NeutronLB()
 # def test_pool_delete():
@@ -171,8 +180,9 @@ demo_creds()
 
 
 def test_lb():
+    demo_creds()
 
-    verify_ax()
+#    verify_ax()
 
     # Step 1, setup LB via neutron
 
@@ -188,7 +198,7 @@ def test_lb():
 
     # Step 2, grab the configuration from the AX and verify
 
-    verify_ax('lb')
+#    verify_ax('lb')
 
     # Step 3, pull some data through the LB and verify
 
@@ -196,7 +206,7 @@ def test_lb():
     for ip in member_list:
         members[ip] = requests.get("http://%s/" % ip).text
 
-    lb_data = requests.get("http://%s/" % todo).text
+    lb_data = requests.get("http://%s/" % lb.vip_ip).text
 
     matching_data = False
     for ip, data in members.items():
