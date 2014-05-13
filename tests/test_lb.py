@@ -89,7 +89,6 @@ class NeutronLB(object):
 
 
 class AxSSH(object):
-    MORE_GARBAGE = '--MORE--\r        \x08\x08\x08\x08\x08\x08\x08\x08'
 
     def __init__(self, host, user, password):
         self.host = host
@@ -113,25 +112,13 @@ class AxSSH(object):
         lines = t.readlines()
         t.close()
 
-        fixed = []
-        for line in lines:
-            if line[0:len(AxSSH.MORE_GARBAGE)] == AxSSH.MORE_GARBAGE:
-                fixed.append(line[len(AxSSH.MORE_GARBAGE):])
-            else:
-                fixed.append(line)
-
-        return fixed[3:-3]
+        return lines[4:-3]
 
     def config_get(self):
         commands = ['en\r\n',
                     '\r\n',
+                    'terminal length 0\r\n',
                     'show run\r\n',
-                    ' ',
-                    ' ',
-                    ' ',
-                    ' ',
-                    ' ',
-                    ' ',
                     'exit\r\n',
                     'exit\r\n',
                     'y\r\n']
