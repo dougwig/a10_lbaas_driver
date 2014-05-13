@@ -21,9 +21,10 @@ def find(str, regex):
 class NeutronLB(object):
 
     def __init__(self):
-        self.subnet_id = self.subnet_id(PRIVATE_NETWORK_NAME)
+        self.instance_subnet_id = self.get_subnet_id(INSTANCE_NETWORK_NAME)
+        self.lb_subnet_id = self.get_subnet_id(LB_NETWORK_NAME)
         self.pool_name = self._random_hex()
-        self.lb_pool_create(self.pool_name, self.subnet_id)
+        self.lb_pool_create(self.pool_name, self.instance_subnet_id)
 
     def _random_hex(self):
         return uuid.uuid4().hex[0:12]
@@ -46,7 +47,7 @@ class NeutronLB(object):
         if find(r, "(ACTIVE)") == "":
             raise "error: action did not complete successfully"
 
-    def subnet_id(self, network_name):
+    def get_subnet_id(self, network_name):
         r = self._neutron(['net-show', network_name])
         return find(r, "^\| subnets.*\| ([^\s]+)")
 
@@ -66,19 +67,11 @@ class NeutronLB(object):
         r = self._neutron(['lb-vip-create', '--name', self.vip_name,
                            '--protocol', protocol,
                            '--protocol-port', str(port),
-                           '--subnet-id', self.subnet_id, self.pool_name])
+                           '--subnet-id', self.lb_subnet_id, self.pool_name])
         port_id = find(r, "^\| port_id.*\| ([^\s]+)")
         self.vip_ip = find(r, "^\| address.*\| ([^\s]+)")
         print "INTERNAL VIP_IP ", self.vip_ip
         self._wait_for_completion(['lb-vip-show', self.vip_name])
-
-        if USE_FLOAT:
-            r = self._neutron(['floatingip-create', FLOAT_NETWORK_NAME])
-            floating_id = find(r, "^\| id.*\| ([^\s]+)")
-            self.vip_ip = find(r, "^\| floating_ip_address.*\| ([^\s]+)")
-
-            r = self._neutron(['floatingip-associate', floating_id, port_id])
-            print "FLOATING VIP_IP ", self.vip_ip
 
     def member_create(self, ip_address, port=80):
         r = self._neutron(['lb-member-create', '--address', ip_address,
@@ -206,7 +199,9 @@ def test_lb():
     for ip in member_list:
         members[ip] = requests.get("http://%s/" % ip).text
 
+    print "LB URL ", "http://%s/" % lb.vip_ip
     lb_data = requests.get("http://%s/" % lb.vip_ip).text
+    print "DATA LB ++%s++" % lb_data
 
     matching_data = False
     for ip, data in members.items():

@@ -5,8 +5,8 @@ import os
 PATH_TO_ADMIN_OPENRC = os.environ['HOME'] + '/admin-openrc.sh'
 PATH_TO_DEMO_OPENRC = os.environ['HOME'] + '/demo-openrc.sh'
 
-PRIVATE_NETWORK_NAME = 'demo-net'
-FLOAT_NETWORK_NAME = 'ext-net'
+INSTANCE_NETWORK_NAME = 'demo-net'
+LB_NETWORK_NAME = 'ext-net'
 
 MEMBER1_IP = '10.10.102.108'
 MEMBER2_IP = '10.10.102.109'
