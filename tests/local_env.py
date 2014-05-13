@@ -20,6 +20,8 @@ AX21_PASSWORD = 'a10'
 USE_FLOAT = True
 AUTOSNAT = True
 
+FTP_SERVER_URL = "ftp://ftp@10.10.102.2/"
+
 
 def source_env(path):
     for line in open(path):
