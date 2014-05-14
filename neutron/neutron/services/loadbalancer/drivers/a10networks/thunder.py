@@ -39,7 +39,7 @@ class ThunderDriver(LoadBalancerPlugin):
     def device_context(self, tenant_id=""):
         self.device = A10Client(tenant_id=tenant_id)
 
-    def inspect_response(self, response):
+    def inspect_response(self, response, func=None):
         LOG.debug("inspect_response: %s", response)
         if 'response' in response:
             # indicates configuration already exist continue processing.
@@ -60,7 +60,11 @@ class ThunderDriver(LoadBalancerPlugin):
             elif 67239937 == response['response']['err']['code']:
                 return True
             elif 67305473 == response['response']['err']['code']:
-                return False
+                if func == 'pool_delete':
+                    # delete and 'not found', be silent
+                    return True
+                else:
+                    return False
             elif 2941 == response['response']['err']['code']:
                 return True
             elif 'such' in response:
@@ -421,7 +425,8 @@ class ThunderDriver(LoadBalancerPlugin):
                     tenant_id=pool['tenant_id'],
                     method=pool_delete_req[0][0],
                     url=pool_delete_req[0][1],
-                    body={'name': pool['id']}))) is True:
+                    body={'name': pool['id']}),
+                    func='pool_delete')) is True:
                 try:
                     self.plugin._delete_db_pool(context, pool['id'])
 
