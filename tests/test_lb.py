@@ -25,6 +25,7 @@ class NeutronLB(object):
         self.lb_subnet_id = self.get_subnet_id(LB_NETWORK_NAME)
         self.pool_name = self._random_hex()
         self.lb_pool_create(self.pool_name, self.instance_subnet_id)
+        self.members = {}
 
     def _random_hex(self):
         return uuid.uuid4().hex[0:12]
@@ -73,11 +74,18 @@ class NeutronLB(object):
         print "INTERNAL VIP_IP ", self.vip_ip
         self._wait_for_completion(['lb-vip-show', self.vip_name])
 
+    def vip_destroy(self):
+        self._neutron(['lb-vip-delete', self.vip_name])
+
     def member_create(self, ip_address, port=80):
         r = self._neutron(['lb-member-create', '--address', ip_address,
                            '--protocol-port', str(port), self.pool_name])
         member_id = find(r, "^\| id.*\| ([^\s]+)")
         self._wait_for_completion(['lb-member-show', member_id])
+        self.members[ip_address] = member_id
+
+    def member_destroy(self, ip_address):
+        self._neutron(['lb-member-delete', self.members[ip_address]])
 
     def monitor_create(self, delay=5, retries=5, timeout=5, mon_type='HTTP'):
         r = self._neutron(['lb-healthmonitor-create', '--delay', str(delay),
@@ -86,10 +94,26 @@ class NeutronLB(object):
                            '--type', mon_type])
         self.monitor_id = find(r, "^\| id.*\| ([^\s]+)")
 
+    def monitor_destroy(self):
+        self._neutron(['lb-healthmonitor-delete', self.monitor_id])
+
     def monitor_associate(self):
         r = self._neutron(['lb-healthmonitor-associate', self.monitor_id,
                            self.pool_name])
         assert r.strip() == "Associated health monitor %s" % self.monitor_id
+
+    def monitor_disassociate(self):
+        r = self._neutron(['lb-healthmonitor-disassociate', self.monitor_id,
+                           self.pool_name])
+
+    def destroy(self):
+        self.monitor_disassociate()
+        self.monitor_destroy()
+        member_list = [MEMBER1_IP, MEMBER2_IP]
+        for ip in member_list:
+            self.member_destroy(ip)
+        self.vip_destroy()
+        self.pool_delete()
 
 
 class AxSSH(object):
@@ -210,5 +234,7 @@ def test_lb():
             break
 
     assert matching_data
+
+    lb.destroy()
 
     # Whoa, all done, success.
