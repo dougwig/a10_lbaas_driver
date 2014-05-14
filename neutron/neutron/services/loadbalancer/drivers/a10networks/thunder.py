@@ -774,7 +774,7 @@ class ThunderDriver(LoadBalancerPlugin):
             hm_obj['interval'] = health_monitor['delay']
             hm_obj['timeout'] = health_monitor['timeout']
             hm_obj['consec_pass_reqd'] = health_monitor['max_retries']
-            url = "%s  %s" % (
+            url = "%s %s" % (
                 health_monitor['http_method'], health_monitor["url_path"])
             hm_obj['http']['url'] = url
             hm_obj['http']['expect_code'] = health_monitor['expected_codes']
