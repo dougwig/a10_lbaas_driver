@@ -234,7 +234,7 @@ class ThunderDriver(LoadBalancerPlugin):
         else:
             vport_obj_req = (request_struct_v2.vport_TCP_obj.call
                              .search.toDict().items())
-            vport_update_req = (request_struct_v2.vport_HTTP_obj.call.update
+            vport_update_req = (request_struct_v2.vport_TCP_obj.call.update
                                 .toDict().items())
         try:
             vport_res = self.device.send(tenant_id=vip['tenant_id'],
