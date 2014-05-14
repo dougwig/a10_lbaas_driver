@@ -1,0 +1,23 @@
+#!/bin/sh
+
+for x in `neutron lb-vip-list | egrep -v '^\+|^\| id' | awk '{print $2}'`; do
+  neutron lb-vip-delete $x
+done
+
+for x in `neutron lb-healthmonitor-list | egrep -v '^\+|^\| id' | grep HTTP | awk '{print $2}'`; do
+  pool=`neutron lb-healthmonitor-show $x | grep -v PENDING | \
+    grep pool | perl -ne '/pool_id": "([^"]+)/ && print "$1\n";'`
+  if [ -n "$pool" ]; then
+    neutron lb-healthmonitor-disassociate $x $pool
+  fi
+  neutron lb-healthmonitor-delete $x
+done
+
+for x in `neutron lb-member-list | egrep -v '^\+|^\| id' | awk '{print $2}'`; do
+  neutron lb-member-delete $x
+done
+
+for x in `neutron lb-pool-list | egrep -v '^\+|^\| id' | awk '{print $2}'`; do
+  neutron lb-pool-delete $x
+done
+

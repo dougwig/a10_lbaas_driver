@@ -184,6 +184,8 @@ class ThunderDriver(LoadBalancerPlugin):
             elif vip['session_persistence']['type'] == "SOURCE_IP":
                 vport_obj['source_ip_persistence_template'] = temp_name
             vport_obj['name'] = vip['id']
+        if 'True' in self.device.device_info['autosnat']:
+            vport_obj['source_nat'] = 'auto'
         vs['vport_list'] = [vport_obj]
         service_group_search_req = (request_struct_v2.service_group_json_obj
                                     .call.search.toDict().items())
@@ -232,7 +234,7 @@ class ThunderDriver(LoadBalancerPlugin):
         else:
             vport_obj_req = (request_struct_v2.vport_TCP_obj.call
                              .search.toDict().items())
-            vport_update_req = (request_struct_v2.vport_HTTP_obj.call.update
+            vport_update_req = (request_struct_v2.vport_TCP_obj.call.update
                                 .toDict().items())
         try:
             vport_res = self.device.send(tenant_id=vip['tenant_id'],
@@ -772,7 +774,7 @@ class ThunderDriver(LoadBalancerPlugin):
             hm_obj['interval'] = health_monitor['delay']
             hm_obj['timeout'] = health_monitor['timeout']
             hm_obj['consec_pass_reqd'] = health_monitor['max_retries']
-            url = "%s  %s" % (
+            url = "%s %s" % (
                 health_monitor['http_method'], health_monitor["url_path"])
             hm_obj['http']['url'] = url
             hm_obj['http']['expect_code'] = health_monitor['expected_codes']
@@ -785,8 +787,8 @@ class ThunderDriver(LoadBalancerPlugin):
             hm_obj['interval'] = health_monitor['delay']
             hm_obj['timeout'] = health_monitor['timeout']
             hm_obj['consec_pass_reqd'] = health_monitor['max_retries']
-            url = "%s  %s" % (health_monitor['http_method'],
-                              health_monitor["url_path"])
+            url = "%s %s" % (
+                health_monitor['http_method'], health_monitor["url_path"])
             hm_obj['https']['url'] = url
             hm_obj['https']['expect_code'] = health_monitor['expected_codes']
 
