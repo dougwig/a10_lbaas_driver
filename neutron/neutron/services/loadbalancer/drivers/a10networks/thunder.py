@@ -23,7 +23,7 @@ from neutron.db import l3_db
 from neutron.db.loadbalancer import loadbalancer_db as lb_db
 from neutron.openstack.common import log as logging
 from neutron.plugins.common import constants
-from neutron.services.loadbalancer.plugin import LoadBalancerPlugin
+from neutron.services.loadbalancer.drivers import abstract_driver
 
 from acos_client import A10Client
 
@@ -31,7 +31,7 @@ from acos_client import A10Client
 LOG = logging.getLogger(__name__)
 
 
-class ThunderDriver(LoadBalancerPlugin):
+class ThunderDriver(abstract_driver.LoadBalancerAbstractDriver):
 
     def __init__(self, plugin):
         self.plugin = plugin
