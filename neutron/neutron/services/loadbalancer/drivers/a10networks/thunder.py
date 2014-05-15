@@ -189,7 +189,7 @@ class ThunderDriver(abstract_driver.LoadBalancerAbstractDriver):
                 vport_obj['source_ip_persistence_template'] = temp_name
             vport_obj['name'] = vip['id']
         if 'True' in self.device.device_info['autosnat']:
-            vport_obj['source_nat'] = 'auto'
+            vport_obj['source_nat_auto'] = 1
         vs['vport_list'] = [vport_obj]
         service_group_search_req = (request_struct_v2.service_group_json_obj
                                     .call.search.toDict().items())
