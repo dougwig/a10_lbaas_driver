@@ -1,4 +1,5 @@
 
+import os
 import pytest
 import re
 import requests
@@ -197,7 +198,7 @@ def verify_ax(template_name='base'):
 
 
 def test_lb():
-    demo_creds()
+    e.demo_creds()
 
     verify_ax()
 
