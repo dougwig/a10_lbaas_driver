@@ -1,4 +1,5 @@
 
+import os
 import pytest
 import re
 import requests
@@ -7,7 +8,7 @@ import tempfile
 import time
 import uuid
 
-from local_env import *
+import local_env as e
 
 
 def find(str, regex):
@@ -21,8 +22,8 @@ def find(str, regex):
 class NeutronLB(object):
 
     def __init__(self):
-        self.instance_subnet_id = self.get_subnet_id(INSTANCE_NETWORK_NAME)
-        self.lb_subnet_id = self.get_subnet_id(LB_NETWORK_NAME)
+        self.instance_subnet_id = self.get_subnet_id(e.INSTANCE_NETWORK_NAME)
+        self.lb_subnet_id = self.get_subnet_id(e.LB_NETWORK_NAME)
         self.pool_name = self._random_hex()
         self.lb_pool_create(self.pool_name, self.instance_subnet_id)
         self.members = {}
@@ -109,7 +110,7 @@ class NeutronLB(object):
     def destroy(self):
         self.monitor_disassociate()
         self.monitor_destroy()
-        member_list = [MEMBER1_IP, MEMBER2_IP]
+        member_list = [e.MEMBER1_IP, e.MEMBER2_IP]
         for ip in member_list:
             self.member_destroy(ip)
         self.vip_destroy()
@@ -178,7 +179,7 @@ class AxSSH(object):
 
 
 def verify_ax(template_name='base'):
-    ax = AxSSH(AX21_HOST, AX21_USERNAME, AX21_PASSWORD)
+    ax = AxSSH(e.AX21_HOST, e.AX21_USERNAME, e.AX21_PASSWORD)
     ax.config_get_and_compare_to_template('base')
 
 
@@ -197,7 +198,7 @@ def verify_ax(template_name='base'):
 
 
 def test_lb():
-    demo_creds()
+    e.demo_creds()
 
     verify_ax()
 
@@ -206,7 +207,7 @@ def test_lb():
     lb = NeutronLB()
     lb.vip_create()
 
-    member_list = [MEMBER1_IP, MEMBER2_IP]
+    member_list = [e.MEMBER1_IP, e.MEMBER2_IP]
     for ip in member_list:
         lb.member_create(ip)
 

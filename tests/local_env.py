@@ -2,8 +2,8 @@
 
 import os
 
-PATH_TO_ADMIN_OPENRC = os.environ['HOME'] + '/admin-openrc.sh'
-PATH_TO_DEMO_OPENRC = os.environ['HOME'] + '/demo-openrc.sh'
+PATH_TO_ADMIN_OPENRC = os.path.join(os.environ['HOME'], 'admin-openrc.sh')
+PATH_TO_DEMO_OPENRC = os.path.join(os.environ['HOME'], 'demo-openrc.sh')
 
 INSTANCE_NETWORK_NAME = 'demo-net'
 LB_NETWORK_NAME = 'ext-net'
