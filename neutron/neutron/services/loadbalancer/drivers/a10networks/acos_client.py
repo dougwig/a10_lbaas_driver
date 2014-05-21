@@ -37,6 +37,7 @@ LOG = logging.getLogger(__name__)
 device_config = ConfigParser()
 device_config.read('/etc/neutron/services/loadbalancer/'
                    'a10networks/a10networks_config.ini')
+LOG.debug("THUNDER: read ini file")
 
 VERSION = "0.3.0"
 
@@ -465,9 +466,9 @@ class A10Client():
         vport_obj['port'] = port
         vport_obj['name'] = name + "_VPORT"
 
-        if source_ip_persistence_template is not None:
+        if s_pers is not None:
             vport_obj['source_ip_persistence_template'] = s_pers
-        elif cookie_persistence_template is not None:
+        elif c_pers is not None:
             vport_obj['cookie_persistence_template'] = c_pers
 
         if 'True' in self.device_info['autosnat']:
@@ -515,9 +516,9 @@ class A10Client():
             raise a10_ex.SearchError(term="vPort Object %s" % name)
 
         # Now apply the changes
-        if source_ip_persistence_template is not None:
+        if s_pers is not None:
             vport_obj['source_ip_persistence_template'] = s_pers
-        elif cookie_persistence_template is not None:
+        elif c_pers is not None:
             vport_obj['cookie_persistence_template'] = c_pers
 
         vport_res['service_group'] = service_group_id
@@ -748,10 +749,10 @@ class A10Client():
             hm_obj['https']['url'] = cmd
             hm_obj['https']['expect_code'] = expect_code
 
-        r = send.send(tenant_id=self.tenant_id,
+        r = self.send(tenant_id=self.tenant_id,
                       method=hm_req[0][0],
                       url=hm_req[0][1],
-                      hm_obj=hm_obj)
+                      body=hm_obj)
 
         if self.inspect_response(r) is not True:
             raise a10_ex.HealthMonitorUpdateError(hm=name)
@@ -779,7 +780,7 @@ class A10Client():
         r = self.send(tenant_id=self.tenant_id,
                       method=hm_del_req[0][0],
                       url=hm_del_req[0][1],
-                      body={"name": healthmond_id})
+                      body={"name": healthmon_id})
 
         if self.inspect_response(r) is not True:
             raise a10_ex.HealthMonitorDeleteError(hm=healthmon_id)

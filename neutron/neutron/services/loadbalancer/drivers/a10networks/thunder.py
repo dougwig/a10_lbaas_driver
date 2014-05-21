@@ -34,9 +34,11 @@ LOG = logging.getLogger(__name__)
 class ThunderDriver(abstract_driver.LoadBalancerAbstractDriver):
 
     def __init__(self, plugin):
+        LOG.debug("THUNDER: driver init")
         self.plugin = plugin
 
     def _device_context(self, tenant_id=""):
+        LOG.debug("THUNDER: device context")
         return A10Client(tenant_id=tenant_id)
 
     def _active(self, context, model, vid):
@@ -85,10 +87,8 @@ class ThunderDriver(abstract_driver.LoadBalancerAbstractDriver):
         try:
             a10.virtual_server_create(vip['id'], vip['address'],
                                       vip['protocol'], vip['protocol_port'],
-                                      service_group_id=vip['pool_id'],
-                                      source_ip_persistence_template=s_pers,
-                                      cookie_persistence_template=c_pers,
-                                      status=status)
+                                      vip['pool_id'],
+                                      s_pers, c_pers, status)
             self._active(context, lb_db.Vip, vip['id'])
 
         except:
@@ -112,7 +112,7 @@ class ThunderDriver(abstract_driver.LoadBalancerAbstractDriver):
             raise a10_ex.VipUpdateError(vip=vip['id'])
 
     def delete_vip(self, context, vip):
-        a10 = self.device_context(tenant_id=vip['tenant_id'])
+        a10 = self._device_context(tenant_id=vip['tenant_id'])
         try:
             if vip['session_persistence'] is not None:
                 a10.persistence_delete(vip['session_persistence']['type'],
@@ -191,7 +191,7 @@ class ThunderDriver(abstract_driver.LoadBalancerAbstractDriver):
                                            "admin.")
 
         finally:
-            if self.device.device_info['v_method'].lower() == 'adp':
+            if a10.device_info['v_method'].lower() == 'adp':
                 tpool = context._session.query(lb_db.Pool)
                 n = tpool.filter_by(tenant_id=pool['tenant_id']).count()
                 if n == 0:
@@ -222,9 +222,9 @@ class ThunderDriver(abstract_driver.LoadBalancerAbstractDriver):
             }
         return s
 
-    def _get_member_ip(self, context, member):
+    def _get_member_ip(self, context, member, a10):
         ip_address = member['address']
-        if 'True' in self.device.device_info['use_float']:
+        if 'True' in a10.device_info['use_float']:
             fip_qry = context.session.query(l3_db.FloatingIP)
             if (fip_qry.filter_by(fixed_ip_address=ip_address).count() > 0):
                 float_address = fip_qry.filter_by(
@@ -241,7 +241,7 @@ class ThunderDriver(abstract_driver.LoadBalancerAbstractDriver):
     def create_member(self, context, member):
         a10 = self._device_context(tenant_id=member['tenant_id'])
 
-        ip_address = self._get_member_ip(context, member)
+        ip_address = self._get_member_ip(context, member, a10)
         server_name = self._get_member_server_name(member, ip_address)
 
         try:
@@ -268,7 +268,7 @@ class ThunderDriver(abstract_driver.LoadBalancerAbstractDriver):
     def update_member(self, context, old_member, member):
         a10 = self._device_context(tenant_id=member['tenant_id'])
 
-        ip_address = self._get_member_ip(context, member)
+        ip_address = self._get_member_ip(context, member, a10)
         server_name = self._get_member_server_name(member, ip_address)
 
         try:
@@ -291,7 +291,7 @@ class ThunderDriver(abstract_driver.LoadBalancerAbstractDriver):
             tenant_id=member['tenant_id'],
             address=member['address']).count()
 
-        ip_address = self._get_member_ip(context, member)
+        ip_address = self._get_member_ip(context, member, a10)
         server_name = self._get_member_server_name(member, ip_address)
 
         try:
