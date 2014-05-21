@@ -182,49 +182,24 @@ class ThunderDriver(abstract_driver.LoadBalancerAbstractDriver):
                 raise a10_ex.VipUpdateError(vip=vip['id'])
 
     def delete_vip(self, context, vip):
-        self.device_context(tenant_id=vip['tenant_id'])
+        a10 = self.device_context(tenant_id=vip['tenant_id'])
         vs_name = vip['id']
         vs_delete_req = (request_struct_v2.virtual_server_object.call.
                          delete.toDict().items())
         try:
             if vip['session_persistence'] is not None:
-                if vip['session_persistence']['type'] == "SOURCE_IP":
-                    temp_name = "Type Source_IP named %s" % vip['id']
-                    delete_per_temp = (request_struct_v2
-                                       .SOURCE_IP_TEMP_OBJ.call.delete
-                                       .toDict().items())
-                elif vip['session_persistence']['type'] == 'HTTP_COOKIE':
-                    delete_per_temp = (request_struct_v2
-                                       .COOKIE_PER_TEMP_OBJ.call.delete
-                                       .toDict().items())
-                    temp_name = "Type COOKIE named %s" % vip['id']
-                if (self.inspect_response(self.device.send(
-                        tenant_id=vip['tenant_id'],
-                        method=delete_per_temp[0][0],
-                        url=delete_per_temp[0][1],
-                        body={'name': vip['id']})) is not True):
-                    msg = "Template %s will be orphaned." % temp_name
-                    LOG.debug(_(msg))
+                a10.persistence_delete(vip['session_persistence']['type'],
+                                       vip['id'])
         except:
-            LOG.debug(_("No Virtual Server Port Present"))
-        finally:
-            try:
-                if (self.inspect_response(self.device.send(
-                        tenant_id=vip['tenant_id'],
-                        method=vs_delete_req[0][0],
-                        url=vs_delete_req[0][1],
-                        body={'name': vs_name}))) is True:
-                    self.plugin._delete_db_vip(context, vip['id'])
-                else:
-                    LOG.debug(traceback.format_exc())
-                    self.plugin._delete_db_vip(context, vip['id'])
-                    raise a10_ex.VipDeleteError(vip=vs_name)
+            LOG.debug(traceback.format_exc())
 
-            except:
-                LOG.debug(traceback.format_exc())
-                self.plugin.update_status(context, lb_db.Vip, vip['id'],
-                                          constants.ERROR)
-                raise a10_ex.VipDeleteError(vip=vs_name)
+        try:
+            a10.virtual_server_delete(vs_name)
+            self.plugin._delete_db_vip(context, vip['id'])
+        except:
+            LOG.debug(traceback.format_exc())
+            self._failed(context, lb_db.Vip, vip['id'])
+            raise a10_ex.VipDeleteError(vip=vs_name)
 
     def create_pool(self, context, pool):
         a10 = self._device_context(tenant_id=pool['tenant_id'])

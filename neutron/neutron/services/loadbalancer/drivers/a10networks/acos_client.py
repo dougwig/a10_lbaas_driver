@@ -411,8 +411,26 @@ class A10Client():
         if self.inspect_response(r) is not True:
             raise a10_ex.TemplateCreateError(template=name)
 
-    def persistence_delete(self):
-        todo
+    def persistence_delete(self, persist_type, name):
+        if persist_type == "SOURCE_IP":
+            delete_per_temp = (request_struct_v2
+                               .SOURCE_IP_TEMP_OBJ.call.delete
+                               .toDict().items())
+        elif persist_type == 'HTTP_COOKIE':
+            delete_per_temp = (request_struct_v2
+                               .COOKIE_PER_TEMP_OBJ.call.delete
+                               .toDict().items())
+        else:
+            LOG.debug("Unknown persistence type passed to delete: %s",
+                      persist_type)
+            return None
+
+        r = self.send(tenant_id=self.tenant_id,
+                      method=delete_per_temp[0][0],
+                      url=delete_per_temp[0][1],
+                      body={'name': name})
+        if self.inspect_response(r) is not True:
+            LOG.debug("Tempalte %s will be orphaned", name)
 
     def create_vip(self, name, address, service_group, port,
                    status=1,
@@ -427,8 +445,16 @@ class A10Client():
     def todo(self):
         todo
 
-    def todo(self):
-        todo
+    def virtual_server_delete(self, name):
+        vs_delete_req = (request_struct_v2.virtual_server_object.call.
+                         delete.toDict().items())
+
+        r = self.send(tenant_id=self.tenant_id,
+                      method=vs_delete_req[0][0],
+                      url=vs_delete_req[0][1],
+                      body={'name': name})
+        if self.inspect_response(r) is not True:
+            raise a10_ex.VipDeleteError(vip=name)
 
     def service_group_get(self, name):
         pool_search_req = (request_struct_v2.service_group_json_obj.call
