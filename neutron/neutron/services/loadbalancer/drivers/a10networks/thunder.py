@@ -45,93 +45,23 @@ class ThunderDriver(abstract_driver.LoadBalancerAbstractDriver):
     def _failed(self, context, model, vid):
         self.plugin.update_status(context, model, vid, constants.ERROR)
 
-    def _persistence_create(self, vip):  # TODO -- goes back to thunder.py
-        self.device_context(tenant_id=vip['tenant_id'])
-        if vip['session_persistence'] is not None:
-            temp_name = vip['id']
-            if vip['session_persistence']['type'] == "SOURCE_IP":
-                # Search to see if the template already exist.
-                req = (request_struct_v2.SOURCE_IP_TEMP_OBJ.call.search
-                       .toDict().items())
-                try:
-                    res = self.inspect_response(
-                        self.device.send(tenant_id=vip['tenant_id'],
-                                         method=req[0][0],
-                                         url=req[0][1],
-                                         body={"name": temp_name}))
-                except:
-                    LOG.debug(traceback.format_exc())
-                    raise a10_ex.SearchError(term="SRC_IP_PER_TEMP")
-
-                if res is not True:
-                    src_ip_obj = (request_struct_v2.SOURCE_IP_TEMP_OBJ.ds
-                                  .toDict())
-                    src_ip_obj["src_ip_persistence_template"]['name'] = (
-                        temp_name)
-                    src_req = (request_struct_v2.SOURCE_IP_TEMP_OBJ.call
-                               .create.toDict().items())
-                    try:
-                        src_res = (self.inspect_response(self.device.send(
-                            tenant_id=vip['tenant_id'],
-                            method=src_req[0][0],
-                            url=src_req[0][1],
-                            body={"name": temp_name})))
-                    except:
-                        LOG.debug(traceback.format_exc())
-                        raise a10_ex.TemplateCreateError(template=temp_name)
-
-                    if src_res is True:
-                        return temp_name
-
-                elif res is True:
-                    return temp_name
-                else:
-                    return None
-
-            elif vip['session_persistence']['type'] == 'HTTP_COOKIE':
-                req = (request_struct_v2.COOKIE_PER_TEMP_OBJ.call.search
-                       .toDict().items())
-                try:
-                    res = self.inspect_response(
-                        self.device.send(
-                            tenant_id=vip['tenant_id'],
-                            method=req[0][0],
-                            url=req[0][1],
-                            body={"name": temp_name}))
-                except:
-                    LOG.debug(traceback.format_exc())
-                    raise a10_ex.SearchError(term="COOKIE_PER_TEMP")
-
-                if res is not True:
-                    cookie_ip_obj = (request_struct_v2.COOKIE_PER_TEMP_OBJ
-                                     .ds.toDict())
-                    cookie_ip_obj["cookie_persistence_template"]['name'] = (
-                        temp_name)
-                    src_req = (request_struct_v2.COOKIE_PER_TEMP_OBJ
-                               .call.create.toDict().items())
-                    try:
-                        src_res = (self.inspect_response(
-                            self.device.send(tenant_id=vip['tenant_id'],
-                                             method=src_req[0][0],
-                                             url=src_req[0][1],
-                                             body={"name": temp_name})))
-                    except:
-                        LOG.debug(traceback.format_exc())
-                        raise a10_ex.TemplateCreateError(
-                            template=temp_name)
-
-                    if src_res is True:
-                        return temp_name
-                elif res is True:
-                    return temp_name
-                else:
-                    return None
-
-            elif vip['session_persistence']['type'] == "APP_COOKIE":
-                LOG.debug(traceback.format_exc())
-                raise a10_ex.UnsupportedFeatureAppCookie()
-        else:
+    def _persistence_create(self, vip):
+        a10 = self._device_context(tenant_id=vip['tenant_id'])
+        if vip['session_persistence'] is None:
             return None
+
+        persist_type = vip['session_persistence']['type']
+        name = vip['id']
+
+        try:
+            if a10.persistence_exists(persist_type, name):
+                return name
+            a10.persistence_create(persist_type, name)
+        except:
+            LOG.debug(traceback.format_exc())
+            raise a10_ex.TemplateCreateError(template=name)
+
+        return name
 
     def create_vip(self, context, vip):
         """

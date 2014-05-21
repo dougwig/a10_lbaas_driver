@@ -373,6 +373,47 @@ class A10Client():
 
         return False
 
+    def persistence_exists(self, persist_type, name):
+        if persist_type == 'SOURCE_IP':
+            req = (request_struct_v2.SOURCE_IP_TEMP_OBJ.call.search
+                   .toDict().items())
+        elif persist_type == 'HTTP_COOKIE':
+            req = (request_struct_v2.COOKIE_PER_TEMP_OBJ.call.search
+                   .toDict().items())
+        else:
+            raise a10_ex.TemplateCreateError(template=name)
+
+        r = self.send(tenant_id=self.tenant_id,
+                      method=req[0][0],
+                      url=req[0][1],
+                      body={"name": name})
+        return self.inspect_response(r)
+
+    def persistence_create(self, persist_type, name):
+        if persist_type == 'SOURCE_IP':
+            args = request_struct_v2.SOURCE_IP_TEMP_OBJ.ds.toDict()
+            args["src_ip_persistence_template"]['name'] = name
+            req = (request_struct_v2.SOURCE_IP_TEMP_OBJ.call
+                   .create.toDict().items())
+        elif persist_type == 'HTTP_COOKIE':
+            args = request_struct_v2.COOKIE_PER_TEMP_OBJ.ds.toDict()
+            args["cookie_persistence_template"]['name'] = name
+            req = (request_struct_v2.COOKIE_PER_TEMP_OBJ
+                   .call.create.toDict().items())
+        else:
+            raise a10_ex.TemplateCreateError(template=name)
+
+        r = self.send(tenant_id=self.tenant_id,
+                      method=req[0][0],
+                      url=req[0][1],
+                      body=args)
+
+        if self.inspect_response(r) is not True:
+            raise a10_ex.TemplateCreateError(template=name)
+
+    def persistence_delete(self):
+        todo
+
     def create_vip(self, name, address, service_group, port,
                    status=1,
                    cookie_persistance_template=None,
