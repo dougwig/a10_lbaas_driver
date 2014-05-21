@@ -358,8 +358,14 @@ class A10Client():
                 return True
             elif 67239937 == response['response']['err']['code']:
                 return True
+            elif 33619968 == response['response']['err']['code']:
+                if func == 'delete':
+                    # delete and 'not found', be silent
+                    return True
+                else:
+                    return False
             elif 67305473 == response['response']['err']['code']:
-                if func == 'pool_delete':
+                if func == 'delete':
                     # delete and 'not found', be silent
                     return True
                 else:
@@ -369,6 +375,12 @@ class A10Client():
             elif 'such' in response:
                 LOG.debug('FOUND SUCH IN RESPONSE')
                 return True
+            elif 1023 == response['response']['err']['code']:
+                if func == 'delete':
+                    # delete and 'not found', be silent
+                    return True
+                else:
+                    return False
             else:
                 return False
 
@@ -597,7 +609,7 @@ class A10Client():
                       url=pool_update_req[0][1],
                       body=args)
 
-        if self.inspect_response(r) is not True:
+        if self.inspect_response(r, func='delete') is not True:
             raise a10_ex.SgUpdateError(sg=name)
 
     def service_group_delete(self, name):
@@ -609,7 +621,7 @@ class A10Client():
                       url=pool_delete_req[0][1],
                       body={'name': name})
 
-        if self.inspect_response(r, func='pool_delete') is not True:
+        if self.inspect_response(r, func='delete') is not True:
             raise a10_ex.SgDeleteError(sg="sg delete failure")
 
     def stats(self, name):
@@ -713,7 +725,8 @@ class A10Client():
                       url=member_delete_req[0][1],
                       body=member_ds)
 
-        if self.inspect_response(r) is not True:
+        if self.inspect_response(r, func='delete') is not True:
+            LOG.debug("response is %s", r)
             raise a10_ex.MemberDeleteError(member=name)
 
     def _health_monitor_set(self, request_struct_root, mon_type, name,
@@ -782,5 +795,5 @@ class A10Client():
                       url=hm_del_req[0][1],
                       body={"name": healthmon_id})
 
-        if self.inspect_response(r) is not True:
+        if self.inspect_response(r, func='delete') is not True:
             raise a10_ex.HealthMonitorDeleteError(hm=healthmon_id)

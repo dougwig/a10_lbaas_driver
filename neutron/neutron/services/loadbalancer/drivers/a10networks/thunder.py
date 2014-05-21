@@ -171,8 +171,8 @@ class ThunderDriver(abstract_driver.LoadBalancerAbstractDriver):
                 context, members))
 
         for hm in pool['health_monitors_status']:
-            self.delete_pool_health_monitor(context, self.get_health_monitor(
-                context, hm['monitor_id']), pool['id'])
+            hmon = self.plugin.get_health_monitor(context, hm['monitor_id'])
+            self.delete_pool_health_monitor(context, hmon, pool['id'])
 
         removed_a10 = False
         try:

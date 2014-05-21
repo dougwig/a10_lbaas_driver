@@ -25,7 +25,7 @@ LOG = logging.getLogger(__name__)
 class A10BaseException(exceptions.NeutronException):
     def __init__(self, **kwargs):
         LOG.debug("A10BaseException", exc_info=sys.exc_info())
-        super(A10BaseException, self).__init__(kwargs)
+        super(A10BaseException, self).__init__(**kwargs)
 
 
 class A10ThunderException(A10BaseException):
