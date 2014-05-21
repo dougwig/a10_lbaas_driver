@@ -546,4 +546,7 @@ class ThunderDriver(abstract_driver.LoadBalancerAbstractDriver):
                                                        pool_id)
         except:
             LOG.debug(traceback.format_exc())
-            self._failed(context, health_monitor["id"], pool_id)
+            self.plugin.update_pool_health_monitor(context,
+                                                   health_monitor["id"],
+                                                   pool_id,
+                                                   constants.ERROR)
