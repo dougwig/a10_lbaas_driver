@@ -373,94 +373,6 @@ class A10Client():
 
         return False
 
-    def _persistence_create(self, vip):  # TODO -- goes back to thunder.py
-        self.device_context(tenant_id=vip['tenant_id'])
-        if vip['session_persistence'] is not None:
-            temp_name = vip['id']
-            if vip['session_persistence']['type'] == "SOURCE_IP":
-                # Search to see if the template already exist.
-                req = (request_struct_v2.SOURCE_IP_TEMP_OBJ.call.search
-                       .toDict().items())
-                try:
-                    res = self.inspect_response(
-                        self.device.send(tenant_id=vip['tenant_id'],
-                                         method=req[0][0],
-                                         url=req[0][1],
-                                         body={"name": temp_name}))
-                except:
-                    LOG.debug(traceback.format_exc())
-                    raise a10_ex.SearchError(term="SRC_IP_PER_TEMP")
-
-                if res is not True:
-                    src_ip_obj = (request_struct_v2.SOURCE_IP_TEMP_OBJ.ds
-                                  .toDict())
-                    src_ip_obj["src_ip_persistence_template"]['name'] = (
-                        temp_name)
-                    src_req = (request_struct_v2.SOURCE_IP_TEMP_OBJ.call
-                               .create.toDict().items())
-                    try:
-                        src_res = (self.inspect_response(self.device.send(
-                            tenant_id=vip['tenant_id'],
-                            method=src_req[0][0],
-                            url=src_req[0][1],
-                            body={"name": temp_name})))
-                    except:
-                        LOG.debug(traceback.format_exc())
-                        raise a10_ex.TemplateCreateError(template=temp_name)
-
-                    if src_res is True:
-                        return temp_name
-
-                elif res is True:
-                    return temp_name
-                else:
-                    return None
-
-            elif vip['session_persistence']['type'] == 'HTTP_COOKIE':
-                req = (request_struct_v2.COOKIE_PER_TEMP_OBJ.call.search
-                       .toDict().items())
-                try:
-                    res = self.inspect_response(
-                        self.device.send(
-                            tenant_id=vip['tenant_id'],
-                            method=req[0][0],
-                            url=req[0][1],
-                            body={"name": temp_name}))
-                except:
-                    LOG.debug(traceback.format_exc())
-                    raise a10_ex.SearchError(term="COOKIE_PER_TEMP")
-
-                if res is not True:
-                    cookie_ip_obj = (request_struct_v2.COOKIE_PER_TEMP_OBJ
-                                     .ds.toDict())
-                    cookie_ip_obj["cookie_persistence_template"]['name'] = (
-                        temp_name)
-                    src_req = (request_struct_v2.COOKIE_PER_TEMP_OBJ
-                               .call.create.toDict().items())
-                    try:
-                        src_res = (self.inspect_response(
-                            self.device.send(tenant_id=vip['tenant_id'],
-                                             method=src_req[0][0],
-                                             url=src_req[0][1],
-                                             body={"name": temp_name})))
-                    except:
-                        LOG.debug(traceback.format_exc())
-                        raise a10_ex.TemplateCreateError(
-                            template=temp_name)
-
-                    if src_res is True:
-                        return temp_name
-                elif res is True:
-                    return temp_name
-                else:
-                    return None
-
-            elif vip['session_persistence']['type'] == "APP_COOKIE":
-                LOG.debug(traceback.format_exc())
-                raise a10_ex.UnsupportedFeatureAppCookie()
-        else:
-            return None
-
     def create_vip(self, name, address, service_group, port,
                    status=1,
                    cookie_persistance_template=None,
@@ -481,7 +393,7 @@ class A10Client():
         pool_search_req = (request_struct_v2.service_group_json_obj.call
                            .search.toDict().items())
 
-        return self.send(tenant_id=pool['tenant_id'],
+        return self.send(tenant_id=self.tenant_id,
                          method=pool_search_req[0][0],
                          url=pool_search_req[0][1],
                          body={'name': name})
@@ -495,7 +407,7 @@ class A10Client():
         pool_ds['service_group']['name'] = name
         pool_ds['service_group']['lb_method'] = lb_method
 
-        r = self.send(tenant_id=pool['tenant_id'],
+        r = self.send(tenant_id=self.tenant_id,
                       method=pool_create_req[0][0],
                       url=pool_create_req[0][1],
                       body=pool_ds)
@@ -512,7 +424,7 @@ class A10Client():
         r['service_group']['name'] = name
         r['service_group']['lb_method'] = lb_method
 
-        r = self.send(tenant_id=pool['tenant_id'],
+        r = self.send(tenant_id=self.tenant_id,
                       method=pool_update_req[0][0],
                       url=pool_update_req[0][1],
                       body=r)
@@ -525,7 +437,7 @@ class A10Client():
                            .update.toDict().items())
         args = {"service_group": {"name": name, "health_monitor": mon}}
 
-        r = self.send(tenant_id=pool['tenant_id'],
+        r = self.send(tenant_id=self.tenant_id,
                       method=pool_update_req[0][0],
                       url=pool_update_req[0][1],
                       body=args)
@@ -537,7 +449,7 @@ class A10Client():
         pool_delete_req = (request_struct_v2.service_group_json_obj.call
                            .delete.toDict().items())
 
-        r = self.send(tenant_id=pool['tenant_id'],
+        r = self.send(tenant_id=self.tenant_id,
                       method=pool_delete_req[0][0],
                       url=pool_delete_req[0][1],
                       body={'name': name})
@@ -550,7 +462,7 @@ class A10Client():
                      .fetchstatistics
                      .toDict().items().items())
 
-        return self.send(tenant_id=pool_qry.tenant_id,
+        return self.send(tenant_id=self.tenant_id,
                          method=stats_req[0][0],
                          url=stats_req[0][1],
                          body={"name": name})
@@ -559,7 +471,7 @@ class A10Client():
         server_search_req = (request_struct_v2.server_json_obj.call.search
                              .toDict().items())
 
-        return self.send(tenant_id=member['tenant_id'],
+        return self.send(tenant_id=self.tenant_id,
                          method=server_search_req[0][0],
                          url=server_search_req[0][1],
                          body={'name': server_name})
@@ -571,7 +483,7 @@ class A10Client():
         server_ds['server']['name'] = server_name
         server_ds['server']['host'] = ip_address
 
-        r = self.send(tenant_id=member['tenant_id'],
+        r = self.send(tenant_id=self.tenant_id,
                       method=server_create_req[0][0],
                       url=server_create_req[0][1],
                       body=server_ds)
@@ -584,7 +496,7 @@ class A10Client():
                              .toDict().items())
         server_ds = {"server": {"name": server_name}}
 
-        r = self.send(tenant_id=member['tenant_id'],
+        r = self.send(tenant_id=self.tenant_id,
                       method=server_delete_req[0][0],
                       url=server_delete_req[0][1],
                       body=server_ds)
@@ -603,7 +515,7 @@ class A10Client():
         member_ds['member']['port'] = port
         member_ds['member']['status'] = status
 
-        r = self.send(tenant_id=member['tenant_id'],
+        r = self.send(tenant_id=self.tenant_id,
                       method=member_create_req[0][0],
                       url=member_create_req[0][1],
                       body=member_ds)
@@ -622,7 +534,7 @@ class A10Client():
         member_ds['member']['port'] = port
         member_ds['member']['status'] = status
 
-        r = self.send(tenant_id=member['tenant_id'],
+        r = self.send(tenant_id=self.tenant_id,
                       method=member_update_req[0][0],
                       url=member_update_req[0][1],
                       body=member_ds)
@@ -641,7 +553,7 @@ class A10Client():
             }
         }
 
-        r = self.send(tenant_id=member['tenant_id'],
+        r = self.send(tenant_id=self.tenant_id,
                       method=member_delete_req[0][0],
                       url=member_delete_req[0][1],
                       body=member_ds)
@@ -649,41 +561,71 @@ class A10Client():
         if self.inspect_response(r) is not True:
             raise a10_ex.MemberDeleteError(member=name)
 
-    def todo(self):
-        todo
+    def _health_monitor_set(self, request_struct_root, mon_type, name,
+                            interval, timeout, max_retries,
+                            method=None, url=None, expect_code=None):
 
-    def todo(self):
-        todo
+        if mon_type == 'TCP':
+            hm_req = request_struct_root.toDict().items()
+            hm_obj = request_struct_v2.TCP_HM_OBJ.ds.toDict()
+        elif mon_type == 'PING':
+            pass
+            hm_req = request_struct_root.toDict().items()
+            hm_obj = request_struct_v2.ICMP_HM_OBJ.ds.toDict()
+        elif mon_type == 'HTTP':
+            hm_req = request_struct_root.toDict().items()
+            hm_obj = request_struct_v2.HTTP_HM_OBJ.ds.toDict()
+        elif mon_type == 'HTTPS':
+            hm_req = request_struct_root.toDict().items()
+            hm_obj = request_struct_v2.HTTPS_HM_OBJ.ds.toDict()
+        else:
+            raise a10_ex.HealthMonitorUpdateError(hm=name)
+
+        hm_obj['name'] = name
+        hm_obj['interval'] = interval
+        hm_obj['timeout'] = timeout
+        hm_obj['consec_pass_reqd'] = max_retries
+
+        cmd = "%s %s" % (method, url)
+        if mon_type == 'HTTP':
+            hm_obj['http']['url'] = cmd
+            hm_obj['http']['expect_code'] = expect_code
+        elif mon_type == 'HTTPS':
+            hm_obj['https']['url'] = cmd
+            hm_obj['https']['expect_code'] = expect_code
+
+        r = send.send(tenant_id=self.tenant_id,
+                      method=hm_req[0][0],
+                      url=hm_req[0][1],
+                      hm_obj=hm_obj)
+
+        if self.inspect_response(r) is not True:
+            raise a10_ex.HealthMonitorUpdateError(hm=name)
+
+    def health_monitor_create(self, mon_type, name,
+                              interval, timeout, max_retries,
+                              method=None, url=None, expect_code=None):
+        self._health_monitor_set(request_struct_v2.TCP_HM_OBJ.call.create,
+                                 mon_type, name,
+                                 interval, timeout, max_retries,
+                                 method, url, expect_code)
+
+    def health_monitor_update(self, mon_type, name,
+                              interval, timeout, max_retries,
+                              method=None, url=None, expect_code=None):
+        self._health_monitor_set(request_struct_v2.TCP_HM_OBJ.call.update,
+                                 mon_type, name,
+                                 interval, timeout, max_retries,
+                                 method, url, expect_code)
 
     def health_monitor_delete(self, healthmon_id):
         hm_del_req = (request_struct_v2.HTTP_HM_OBJ.call.delete
                       .toDict().items())
 
-        r = self.send(tenant_id=health_monitor['tenant_id'],
+        r = self.send(tenant_id=self.tenant_id,
                       method=hm_del_req[0][0],
                       url=hm_del_req[0][1],
                       body={"name": healthmond_id})
 
         if self.inspect_response(r) is not True:
             raise a10_ex.HealthMonitorDeleteError(hm=healthmon_id)
-
-    def todo(self):
-        todo
-
-    def todo(self):
-        todo
-
-    def todo(self):
-        todo
-
-    def todo(self):
-        todo
-
-    def todo(self):
-        todo
-
-    def todo(self):
-        todo
-
-    def todo(self):
-        todo

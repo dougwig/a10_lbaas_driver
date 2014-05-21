@@ -39,11 +39,99 @@ class ThunderDriver(abstract_driver.LoadBalancerAbstractDriver):
     def _device_context(self, tenant_id=""):
         return A10Client(tenant_id=tenant_id)
 
-    def _active(self, a, b, c):
-        self.plugin.update_status(a, b, c, constants.ACTIVE)
+    def _active(self, context, model, vid):
+        self.plugin.update_status(context, model, vid, constants.ACTIVE)
 
-    def _failed(self, a, b, c):
-        self.plugin.update_status(a, b, c, constants.ERROR)
+    def _failed(self, context, model, vid):
+        self.plugin.update_status(context, model, vid, constants.ERROR)
+
+    def _persistence_create(self, vip):  # TODO -- goes back to thunder.py
+        self.device_context(tenant_id=vip['tenant_id'])
+        if vip['session_persistence'] is not None:
+            temp_name = vip['id']
+            if vip['session_persistence']['type'] == "SOURCE_IP":
+                # Search to see if the template already exist.
+                req = (request_struct_v2.SOURCE_IP_TEMP_OBJ.call.search
+                       .toDict().items())
+                try:
+                    res = self.inspect_response(
+                        self.device.send(tenant_id=vip['tenant_id'],
+                                         method=req[0][0],
+                                         url=req[0][1],
+                                         body={"name": temp_name}))
+                except:
+                    LOG.debug(traceback.format_exc())
+                    raise a10_ex.SearchError(term="SRC_IP_PER_TEMP")
+
+                if res is not True:
+                    src_ip_obj = (request_struct_v2.SOURCE_IP_TEMP_OBJ.ds
+                                  .toDict())
+                    src_ip_obj["src_ip_persistence_template"]['name'] = (
+                        temp_name)
+                    src_req = (request_struct_v2.SOURCE_IP_TEMP_OBJ.call
+                               .create.toDict().items())
+                    try:
+                        src_res = (self.inspect_response(self.device.send(
+                            tenant_id=vip['tenant_id'],
+                            method=src_req[0][0],
+                            url=src_req[0][1],
+                            body={"name": temp_name})))
+                    except:
+                        LOG.debug(traceback.format_exc())
+                        raise a10_ex.TemplateCreateError(template=temp_name)
+
+                    if src_res is True:
+                        return temp_name
+
+                elif res is True:
+                    return temp_name
+                else:
+                    return None
+
+            elif vip['session_persistence']['type'] == 'HTTP_COOKIE':
+                req = (request_struct_v2.COOKIE_PER_TEMP_OBJ.call.search
+                       .toDict().items())
+                try:
+                    res = self.inspect_response(
+                        self.device.send(
+                            tenant_id=vip['tenant_id'],
+                            method=req[0][0],
+                            url=req[0][1],
+                            body={"name": temp_name}))
+                except:
+                    LOG.debug(traceback.format_exc())
+                    raise a10_ex.SearchError(term="COOKIE_PER_TEMP")
+
+                if res is not True:
+                    cookie_ip_obj = (request_struct_v2.COOKIE_PER_TEMP_OBJ
+                                     .ds.toDict())
+                    cookie_ip_obj["cookie_persistence_template"]['name'] = (
+                        temp_name)
+                    src_req = (request_struct_v2.COOKIE_PER_TEMP_OBJ
+                               .call.create.toDict().items())
+                    try:
+                        src_res = (self.inspect_response(
+                            self.device.send(tenant_id=vip['tenant_id'],
+                                             method=src_req[0][0],
+                                             url=src_req[0][1],
+                                             body={"name": temp_name})))
+                    except:
+                        LOG.debug(traceback.format_exc())
+                        raise a10_ex.TemplateCreateError(
+                            template=temp_name)
+
+                    if src_res is True:
+                        return temp_name
+                elif res is True:
+                    return temp_name
+                else:
+                    return None
+
+            elif vip['session_persistence']['type'] == "APP_COOKIE":
+                LOG.debug(traceback.format_exc())
+                raise a10_ex.UnsupportedFeatureAppCookie()
+        else:
+            return None
 
     def create_vip(self, context, vip):
         """
@@ -387,182 +475,59 @@ class ThunderDriver(abstract_driver.LoadBalancerAbstractDriver):
             self._failed(context, lb_db.Member, member["id"])
             raise a10_ex.MemberDeleteError(member=member["id"])
 
-    def update_pool_health_monitor(self, context,
-                                   old_health_monitor,
-                                   health_monitor,
-                                   pool_id):
-        self.device_context(tenant_id=health_monitor['tenant_id'])
-        if health_monitor['type'] == "TCP":
-            hm_update_req = (request_struct_v2.TCP_HM_OBJ.call.update
-                             .toDict().items())
-            hm_obj = request_struct_v2.TCP_HM_OBJ.ds.toDict()
-            hm_obj['name'] = health_monitor['id'][0:28]
-            hm_obj['interval'] = health_monitor['delay']
-            hm_obj['timeout'] = health_monitor['timeout']
-            hm_obj['consec_pass_reqd'] = health_monitor['max_retries']
-
-        elif health_monitor['type'] == "PING":
-            hm_update_req = (request_struct_v2.HTTP_HM_OBJ.call.update
-                             .toDict().items())
-            hm_obj = request_struct_v2.ICMP_HM_OBJ.ds.toDict()
-            hm_obj['name'] = health_monitor['id'][0:28]
-            hm_obj['interval'] = health_monitor['delay']
-            hm_obj['timeout'] = health_monitor['timeout']
-            hm_obj['consec_pass_reqd'] = health_monitor['max_retries']
-
-        elif health_monitor['type'] == "HTTP":
-            hm_update_req = (request_struct_v2.HTTP_HM_OBJ.call.update
-                             .toDict().items())
-            hm_obj = request_struct_v2.HTTP_HM_OBJ.ds.toDict()
-            hm_obj['name'] = health_monitor['id'][0:28]
-            hm_obj['interval'] = health_monitor['delay']
-            hm_obj['timeout'] = health_monitor['timeout']
-            hm_obj['consec_pass_reqd'] = health_monitor['max_retries']
-            url = "%s %s" % (
-                health_monitor['http_method'], health_monitor["url_path"])
-            hm_obj['http']['url'] = url
-            hm_obj['http']['expect_code'] = health_monitor[
-                'expected_codes']
-        elif health_monitor['type'] == "HTTPS":
-            hm_update_req = (request_struct_v2.HTTPS_HM_OBJ.call.update
-                             .toDict().items())
-            hm_obj = request_struct_v2.HTTPS_HM_OBJ.ds.toDict()
-            hm_obj['name'] = health_monitor['id'][0:28]
-            hm_obj['interval'] = health_monitor['delay']
-            hm_obj['timeout'] = health_monitor['timeout']
-            hm_obj['consec_pass_reqd'] = health_monitor['max_retries']
-            url = "%s %s" % (health_monitor['http_method'],
-                             health_monitor["url_path"])
-            hm_obj['https']['url'] = url
-            hm_obj['https']['expect_code'] = health_monitor['expected_codes']
-
+    def update_pool_health_monitor(self, context, old_health_monitor,
+                                   health_monitor, pool_id):
+        a10 = self._device_context(tenant_id=health_monitor['tenant_id'])
+        hm_name = health_monitor['id'][0:28]
         try:
-            if (self.inspect_response(self.device.send(
-                tenant_id=health_monitor['tenant_id'],
-                method=hm_update_req[0][0],
-                url=hm_update_req[0][1],
-                body=hm_obj))
-                    is True):
-                self.plugin.update_pool_health_monitor(context,
-                                                       health_monitor[
-                                                           "id"],
-                                                       pool_id,
-                                                       constants.ACTIVE)
-            else:
-                raise a10_ex.HealthMonitorUpdateError(hm=hm_obj['name'])
+            a10.health_monitor_update(health_monitor['type'],
+                                      hm_name,
+                                      health_monitor['delay'],
+                                      health_monitor['timeout'],
+                                      health_monitor['max_retries'],
+                                      health_monitor.get('http_method'),
+                                      health_monitor.get('url_path'),
+                                      health_monitor.get('expected_codes'))
+
+            self.plugin.update_pool_health_monitor(context,
+                                                   health_monitor["id"],
+                                                   pool_id,
+                                                   constants.ACTIVE)
 
         except:
             LOG.debug(traceback.format_exc())
-            raise a10_ex.HealthMonitorUpdateError(hm=hm_obj['name'])
+            raise a10_ex.HealthMonitorUpdateError(hm=hm_name)
 
-    def create_pool_health_monitor(self, context,
-                                   health_monitor,
-                                   pool_id):
+    def create_pool_health_monitor(self, context, health_monitor, pool_id):
         a10 = self._device_context(tenant_id=health_monitor['tenant_id'])
-        if health_monitor['type'] == "TCP":
-            hm_update_req = (request_struct_v2.TCP_HM_OBJ.call.create
-                             .toDict().items())
-            hm_obj = request_struct_v2.TCP_HM_OBJ.ds.toDict()
-            hm_obj['name'] = health_monitor['id'][0:28]
-            hm_obj['interval'] = health_monitor['delay']
-            hm_obj['timeout'] = health_monitor['timeout']
-            hm_obj['consec_pass_reqd'] = health_monitor['max_retries']
-            send_hm = True
-        elif health_monitor['type'] == "PING":
-            hm_update_req = (request_struct_v2.ICMP_HM_OBJ.call.create
-                             .toDict().items())
-            hm_obj = request_struct_v2.ICMP_HM_OBJ.ds.toDict()
-            hm_obj['name'] = health_monitor['id'][0:28]
-            hm_obj['interval'] = health_monitor['delay']
-            hm_obj['timeout'] = health_monitor['timeout']
-            hm_obj['consec_pass_reqd'] = health_monitor['max_retries']
-
-        elif health_monitor['type'] == "HTTP":
-            hm_update_req = (request_struct_v2.HTTP_HM_OBJ.call.create
-                             .toDict().items())
-            hm_obj = request_struct_v2.HTTP_HM_OBJ.ds.toDict()
-            hm_obj['name'] = health_monitor['id'][0:28]
-            hm_obj['interval'] = health_monitor['delay']
-            hm_obj['timeout'] = health_monitor['timeout']
-            hm_obj['consec_pass_reqd'] = health_monitor['max_retries']
-            url = "%s %s" % (
-                health_monitor['http_method'], health_monitor["url_path"])
-            hm_obj['http']['url'] = url
-            hm_obj['http']['expect_code'] = health_monitor['expected_codes']
-
-        elif health_monitor['type'] == "HTTPS":
-            hm_update_req = (request_struct_v2.HTTPS_HM_OBJ.call.update
-                             .toDict().items())
-            hm_obj = request_struct_v2.HTTPS_HM_OBJ.ds.toDict()
-            hm_obj['name'] = health_monitor['id'][0:28]
-            hm_obj['interval'] = health_monitor['delay']
-            hm_obj['timeout'] = health_monitor['timeout']
-            hm_obj['consec_pass_reqd'] = health_monitor['max_retries']
-            url = "%s %s" % (
-                health_monitor['http_method'], health_monitor["url_path"])
-            hm_obj['https']['url'] = url
-            hm_obj['https']['expect_code'] = health_monitor['expected_codes']
-
+        hm_name = health_monitor['id'][0:28]
         try:
-            if (self.inspect_response(self.device.send(
-                tenant_id=health_monitor['tenant_id'],
-                method=hm_update_req[0][0],
-                url=hm_update_req[0][1],
-                body=hm_obj))
-                    is True):
-                sg_update_obj = (request_struct_v2
-                                 .service_group_json_obj.
-                                 call.update.toDict().items())
-                for pool in health_monitor['pools']:
-                    sg_obj = {
-                        "service_group": {
-                            "name": pool['pool_id'],
-                            "health_monitor": hm_obj['name']
-                        }
-                    }
-                    if (self.inspect_response(self.device.send(
-                        tenant_id=health_monitor['tenant_id'],
-                        method=sg_update_obj[0][0],
-                        url=sg_update_obj[0][1],
-                        body=sg_obj))
-                            is not True):
-                        self.plugin.update_pool_health_monitor(
-                            context, health_monitor["id"], pool_id,
-                            constants.ERROR)
-                        raise a10_ex.HealthMonitorUpdateError(hm=pool[
-                            'pool_id'])
-                    else:
-                        self.plugin.update_pool_health_monitor(context,
-                                                               health_monitor[
-                                                                   "id"],
-                                                               pool_id,
-                                                               constants
-                                                               .ACTIVE)
+            a10.health_monitor_create(health_monitor['type'],
+                                      hm_name,
+                                      health_monitor['delay'],
+                                      health_monitor['timeout'],
+                                      health_monitor['max_retries'],
+                                      health_monitor.get('http_method'),
+                                      health_monitor.get('url_path'),
+                                      health_monitor.get('expected_codes'))
 
-            else:
-                self.plugin.update_pool_health_monitor(context,
-                                                       health_monitor[
-                                                           "id"],
-                                                       pool_id,
-                                                       constants.ERROR)
-                self.plugin._delete_db_pool_health_monitor(context,
-                                                           health_monitor[
-                                                               'id'],
-                                                           pool_id)
-                raise a10_ex.HealthMonitorUpdateError(hm=hm_obj['name'])
+            for pool in health_monitor['pools']:
+                a10.service_group_update_hm(pool['pool_id'], hm_name)
 
+            self.plugin.update_pool_health_monitor(context,
+                                                   health_monitor["id"],
+                                                   pool_id,
+                                                   constants.ACTIVE)
         except:
             LOG.debug(traceback.format_exc())
             self.plugin.update_pool_health_monitor(context,
-                                                   health_monitor[
-                                                       "id"],
+                                                   health_monitor["id"],
                                                    pool_id,
                                                    constants.ERROR)
             self.plugin._delete_db_pool_health_monitor(context,
-                                                       health_monitor[
-                                                           'id'],
+                                                       health_monitor['id'],
                                                        pool_id)
-            raise a10_ex.HealthMonitorUpdateError(hm=hm_obj['name'])
+            raise a10_ex.HealthMonitorUpdateError(hm=hm_name)
 
     def delete_pool_health_monitor(self, context, health_monitor, pool_id):
         a10 = self._device_context(tenant_id=health_monitor['tenant_id'])
