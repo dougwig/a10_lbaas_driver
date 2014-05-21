@@ -446,7 +446,7 @@ class A10Client():
                               service_group_id,
                               s_pers=None,
                               c_pers=None,
-                              status):
+                              status=1):
 
         create_vip_req = (request_struct_v2.virtual_server_object.call
                           .create.toDict().items())
@@ -500,7 +500,7 @@ class A10Client():
     def virtual_port_update(self, name, protocol, service_group_id,
                             source_ip_persistence_template=None,
                             cookie_persistence_template=None,
-                            status):
+                            status=1):
         vport_name = vip['id'] + "_VPORT"
         if vip['protocol'] is "HTTP":
             vport_update_req = (request_struct_v2.vport_HTTP_obj.call.update

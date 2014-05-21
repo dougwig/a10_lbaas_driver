@@ -102,7 +102,7 @@ class ThunderDriver(abstract_driver.LoadBalancerAbstractDriver):
 
         try:
             a10.virtual_port_update(vip['id'], vip['protocol'],
-                                    service_group_id=vip['pool_id'],
+                                    vip['pool_id'],
                                     spers, cpers, status)
             self._active(context, lb_db.Vip, vip['id'])
 
