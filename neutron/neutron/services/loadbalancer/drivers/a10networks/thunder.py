@@ -63,129 +63,56 @@ class ThunderDriver(abstract_driver.LoadBalancerAbstractDriver):
 
         return name
 
-    def create_vip(self, context, vip):
-        """
-        Contruct the Device Context First.
-        """
-        a10 = self._device_context(tenant_id=vip['tenant_id'])
-        vs = request_struct_v2.virtual_server_object.ds.toDict()
-        vs['virtual_server']['address'] = vip['address']
-        vs['virtual_server']['name'] = vip['id']
+    def _setup_vip_args(self, vip):
+        s_pers = None
+        c_pers = None
+        if vip['session_persistence'] is not None:
+            pname = self._persistence_create(vip)
+            if pname is not None:
+                if vip['session_persistence']['type'] is "HTTP_COOKIE":
+                    c_pers = pname
+                elif vip['session_persistence']['type'] == "SOURCE_IP":
+                    s_pers = pname
+        status = 1
         if vip['admin_state_up'] is False:
-            vs['virtual_server']['status'] = 0
+            status = 0
+        return s_pers, c_pers, status
 
-        if vip['protocol'] == "HTTP":
-            vport_obj = request_struct_v2.vport_HTTP_obj.ds.toDict()
-        else:
-            vport_obj = request_struct_v2.vport_TCP_obj.ds.toDict()
-        vport_obj['service_group'] = vip['pool_id']
-        vport_obj['port'] = vip['protocol_port']
-        vport_obj['name'] = vip['id'] + "_VPORT"
-        temp_name = self.persistence_create(vip)
-        if temp_name is not None and vip['session_persistence'] is not None:
-            if vip['session_persistence']['type'] is "HTTP_COOKIE":
-                vport_obj["cookie_persistence_template"] = temp_name
-            elif vip['session_persistence']['type'] == "SOURCE_IP":
-                vport_obj['source_ip_persistence_template'] = temp_name
-            vport_obj['name'] = vip['id']
-        if 'True' in self.device.device_info['autosnat']:
-            vport_obj['source_nat_auto'] = 1
-        vs['vport_list'] = [vport_obj]
-        service_group_search_req = (request_struct_v2.service_group_json_obj
-                                    .call.search.toDict().items())
-        service_group_search_res = (self.device.send(
-            tenant_id=vip['tenant_id'],
-            method=service_group_search_req[0][0],
-            url=service_group_search_req[0][1],
-            body={'name': vip['pool_id']}))
+    def create_vip(self, context, vip):
+        a10 = self._device_context(tenant_id=vip['tenant_id'])
+        s_pers, c_pers, status = self._setup_vip_args(vip)
 
-        if "service_group" in service_group_search_res:
-            create_vip_req = (request_struct_v2.virtual_server_object.call
-                              .create.toDict().items())
-            try:
-                if (self.inspect_response(self.device.send(
-                        tenant_id=vip['tenant_id'],
-                        method=create_vip_req[0][0],
-                        url=create_vip_req[0][1],
-                        body=vs))) is True:
-                    self.plugin.update_status(context, lb_db.Vip,
-                                              vip['id'], constants.ACTIVE)
-                else:
-                    self.plugin.update_status(context, lb_db.Vip,
-                                              vip['id'], constants.ERROR)
-                    LOG.debug(traceback.format_exc())
-                    raise a10_ex.VipCreateError(vip=vip['id'])
+        try:
+            a10.virtual_server_create(vip['id'], vip['address'],
+                                      vip['protocol'], vip['protocol_port'],
+                                      service_group_id=vip['pool_id'],
+                                      source_ip_persistence_template=s_pers,
+                                      cookie_persistence_template=c_pers,
+                                      status=status)
+            self._active(context, lb_db.Vip, vip['id'])
 
-            except:
-                LOG.debug(traceback.format_exc())
-                raise a10_ex.VipCreateError(vip=vip['id'])
-
-        else:
+        except:
             LOG.debug(traceback.format_exc())
-            self.plugin.update_status(context, lb_db.Vip,
-                                      vip['id'], constants.ERROR)
+            self._failed(context, lb_db.Vip, vip['id'])
             raise a10_ex.VipCreateError(vip=vip['id'])
 
     def update_vip(self, context, old_vip, vip):
-        self.device_context(tenant_id=vip['tenant_id'])
-        vport_name = vip['id'] + "_VPORT"
-        if vip['protocol'] is "HTTP":
-            vport_obj_req = (request_struct_v2.vport_HTTP_obj.call.search
-                             .toDict().items())
-            vport_update_req = (request_struct_v2.vport_HTTP_obj.call.update
-                                .toDict().items())
+        a10 = self._device_context(tenant_id=vip['tenant_id'])
+        s_pers, c_pers, status = self._setup_vip_args(vip)
 
-        else:
-            vport_obj_req = (request_struct_v2.vport_TCP_obj.call
-                             .search.toDict().items())
-            vport_update_req = (request_struct_v2.vport_TCP_obj.call.update
-                                .toDict().items())
         try:
-            vport_res = self.device.send(tenant_id=vip['tenant_id'],
-                                         method=vport_obj_req[0][0],
-                                         url=vport_obj_req[0][1],
-                                         body={"name": vport_name})
+            a10.virtual_port_update(vip['id'], vip['protocol'],
+                                    service_group_id=vip['pool_id'],
+                                    spers, cpers, status)
+            self._active(context, lb_db.Vip, vip['id'])
+
         except:
             LOG.debug(traceback.format_exc())
-            raise a10_ex.SearchError(term="vPort Object")
-
-        if 'virtual_service' in vport_res:
-            if vip['session_persistence'] is not None:
-                temp_name = self.persistence_create(vip)
-                if (vip['session_persistence']['type'] is
-                        "HTTP_COOKIE"):
-                    vport_res["cookie_persistence_template"] = temp_name
-                elif (vip['session_persistence']['type'] is "SOURCE_IP"):
-                    vport_res['source_ip_persistence_template'] = temp_name
-
-            vport_res['service_group'] = vip['pool_id']
-            if vip['admin_state_up'] is False:
-                vport_res['status'] = 0
-
-            try:
-                if (self.inspect_response(self.device.send(
-                        tenant_id=vip['tenant_id'],
-                        method=vport_update_req[0][0],
-                        url=vport_update_req[0][1],
-                        body=vport_res))) is True:
-                    self.plugin.update_status(context, lb_db.Vip,
-                                              vip['id'], constants.ACTIVE)
-                else:
-                    self.plugin.update_status(context, lb_db.Vip,
-                                              vip['id'], constants.ERROR)
-                    LOG.debug(traceback.format_exc())
-                    raise a10_ex.VipUpdateError(vip=vip['id'])
-            except:
-                self.plugin.update_status(context, lb_db.Vip,
-                                          vip['id'], constants.ERROR)
-                LOG.debug(traceback.format_exc())
-                raise a10_ex.VipUpdateError(vip=vip['id'])
+            self._failed(context, lb_db.Vip, vip['id'])
+            raise a10_ex.VipUpdateError(vip=vip['id'])
 
     def delete_vip(self, context, vip):
         a10 = self.device_context(tenant_id=vip['tenant_id'])
-        vs_name = vip['id']
-        vs_delete_req = (request_struct_v2.virtual_server_object.call.
-                         delete.toDict().items())
         try:
             if vip['session_persistence'] is not None:
                 a10.persistence_delete(vip['session_persistence']['type'],
@@ -194,12 +121,12 @@ class ThunderDriver(abstract_driver.LoadBalancerAbstractDriver):
             LOG.debug(traceback.format_exc())
 
         try:
-            a10.virtual_server_delete(vs_name)
+            a10.virtual_server_delete(vip['id'])
             self.plugin._delete_db_vip(context, vip['id'])
         except:
             LOG.debug(traceback.format_exc())
             self._failed(context, lb_db.Vip, vip['id'])
-            raise a10_ex.VipDeleteError(vip=vs_name)
+            raise a10_ex.VipDeleteError(vip=vip['id'])
 
     def create_pool(self, context, pool):
         a10 = self._device_context(tenant_id=pool['tenant_id'])

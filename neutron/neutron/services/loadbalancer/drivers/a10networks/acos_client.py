@@ -432,18 +432,105 @@ class A10Client():
         if self.inspect_response(r) is not True:
             LOG.debug("Tempalte %s will be orphaned", name)
 
-    def create_vip(self, name, address, service_group, port,
-                   status=1,
-                   cookie_persistance_template=None,
-                   source_ip_persistent_template=None,
-                   source_nat_auto=0):
-        todo
+    def virtual_server_get(self, name):
+        service_group_search_req = (request_struct_v2.service_group_json_obj
+                                    .call.search.toDict().items())
 
-    def todo(self):
-        todo
+        r = self.send(tenant_id=self.tenant_id,
+                      method=service_group_search_req[0][0],
+                      url=service_group_search_req[0][1],
+                      body={'name': name})
+        return r
 
-    def todo(self):
-        todo
+    def virtual_server_create(self, name, ip_address, protocol, port,
+                              service_group_id,
+                              s_pers=None,
+                              c_pers=None,
+                              status):
+
+        create_vip_req = (request_struct_v2.virtual_server_object.call
+                          .create.toDict().items())
+        vs = request_struct_v2.virtual_server_object.ds.toDict()
+
+        vs['virtual_server']['address'] = ip_address
+        vs['virtual_server']['name'] = name
+        vs['virtual_server']['status'] = status
+
+        if protocol == "HTTP":
+            vport_obj = request_struct_v2.vport_HTTP_obj.ds.toDict()
+        else:
+            vport_obj = request_struct_v2.vport_TCP_obj.ds.toDict()
+
+        vport_obj['service_group'] = service_group_id
+        vport_obj['port'] = port
+        vport_obj['name'] = name + "_VPORT"
+
+        if source_ip_persistence_template is not None:
+            vport_obj['source_ip_persistence_template'] = s_pers
+        elif cookie_persistence_template is not None:
+            vport_obj['cookie_persistence_template'] = c_pers
+
+        if 'True' in self.device_info['autosnat']:
+            vport_obj['source_nat_auto'] = 1
+        vs['vport_list'] = [vport_obj]
+
+        r = self.send(tenant_id=self.tenant_id,
+                      method=create_vip_req[0][0],
+                      url=create_vip_req[0][1],
+                      body=vs)
+
+        if self.inspect_response(r) is not True:
+            raise a10_ex.VipCreateError(vip=name)
+
+    def virtual_port_get(self, name, protocol):
+        vport_name = name + "_VPORT"
+        if protocol is "HTTP":
+            vport_obj_req = (request_struct_v2.vport_HTTP_obj.call.search
+                             .toDict().items())
+        else:
+            vport_obj_req = (request_struct_v2.vport_TCP_obj.call
+                             .search.toDict().items())
+
+        r = self.send(tenant_id=self.tenant_id,
+                      method=vport_obj_req[0][0],
+                      url=vport_obj_req[0][1],
+                      body={"name": vport_name})
+        return r
+
+    def virtual_port_update(self, name, protocol, service_group_id,
+                            source_ip_persistence_template=None,
+                            cookie_persistence_template=None,
+                            status):
+        vport_name = vip['id'] + "_VPORT"
+        if vip['protocol'] is "HTTP":
+            vport_update_req = (request_struct_v2.vport_HTTP_obj.call.update
+                                .toDict().items())
+        else:
+            vport_update_req = (request_struct_v2.vport_TCP_obj.call.update
+                                .toDict().items())
+
+        # First, grab the current port config
+        vport_res = self.virtual_port_get(name, protocol)
+        if 'virtual_service' not in vport_res:
+            raise a10_ex.SearchError(term="vPort Object %s" % name)
+
+        # Now apply the changes
+        if source_ip_persistence_template is not None:
+            vport_obj['source_ip_persistence_template'] = s_pers
+        elif cookie_persistence_template is not None:
+            vport_obj['cookie_persistence_template'] = c_pers
+
+        vport_res['service_group'] = service_group_id
+        vport_res['status'] = status
+
+        # Write the changes to the port
+        r = self.send(tenant_id=self.tenant_id,
+                      method=vport_update_req[0][0],
+                      url=vport_update_req[0][1],
+                      body=vport_res)
+
+        if self.inspect_response(r) is not True:
+            raise a10_ex.VipUpdateError(vip=name)
 
     def virtual_server_delete(self, name):
         vs_delete_req = (request_struct_v2.virtual_server_object.call.
