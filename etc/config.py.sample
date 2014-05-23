@@ -19,14 +19,22 @@
 #         "method": Placement policy. right now hash is th only thing supported. This is utilized if there ar more than one
 #         acos device configured.
 
-[a10networks]
-#ax1 = {"name":"ax1", "host": "10.10.100.20", "port": "8443", "protocol": "https",
-#               "username": "admin",
-#               "password": "a10", "status": "1", "autosnat": "True",
-#         "api_version": "2.1", "v_method": "LSI",
-#               "max_instance": "5000" , "use_float": "True", "method": "hash"}
-#ax2 = {"name":"ax2", "host": "10.10.100.21", "port": "443", "protocol": "https",
-#               "username": "admin",
-#               "password": "a10", "status": "1", "autosnat": "True",
-#        "api_version": "3.0", "v_method": "LSI",
-#               "max_instance": "5000" , "use_float": "False", "method": "hash"}
+devices = {
+    "ax1": {
+        "name":"ax1",
+        "host": "10.10.100.20",
+        "port": 8443,
+        "protocol": "https",
+        "username": "admin",
+        "password": "a10",
+        "status": True,
+        "autosnat": True,
+        "api_version": "2.1",
+        "v_method": "LSI",
+        "max_instance": 5000,
+        "use_float": True,
+        "method": "hash"
+    }
+}
+
+
