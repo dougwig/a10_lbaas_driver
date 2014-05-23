@@ -38,7 +38,6 @@ class ThunderDriver(abstract_driver.LoadBalancerAbstractDriver):
         self.plugin = plugin
 
     def _device_context(self, tenant_id=""):
-        LOG.debug("THUNDER: device context")
         return A10Client(tenant_id=tenant_id)
 
     def _active(self, context, model, vid):
@@ -47,11 +46,7 @@ class ThunderDriver(abstract_driver.LoadBalancerAbstractDriver):
     def _failed(self, context, model, vid):
         self.plugin.update_status(context, model, vid, constants.ERROR)
 
-    def _persistence_create(self, vip):
-        a10 = self._device_context(tenant_id=vip['tenant_id'])
-        if vip['session_persistence'] is None:
-            return None
-
+    def _persistence_create(self, a10, vip):
         persist_type = vip['session_persistence']['type']
         name = vip['id']
 
@@ -65,24 +60,26 @@ class ThunderDriver(abstract_driver.LoadBalancerAbstractDriver):
 
         return name
 
-    def _setup_vip_args(self, vip):
+    def _setup_vip_args(self, a10, vip):
         s_pers = None
         c_pers = None
+        LOG.debug("_setup_vip_args vip=%s", vip)
         if vip['session_persistence'] is not None:
-            pname = self._persistence_create(vip)
-            if pname is not None:
-                if vip['session_persistence']['type'] is "HTTP_COOKIE":
-                    c_pers = pname
-                elif vip['session_persistence']['type'] == "SOURCE_IP":
-                    s_pers = pname
+            LOG.debug("creating persistence template")
+            pname = self._persistence_create(a10, vip)
+            if vip['session_persistence']['type'] is "HTTP_COOKIE":
+                c_pers = pname
+            elif vip['session_persistence']['type'] == "SOURCE_IP":
+                s_pers = pname
         status = 1
         if vip['admin_state_up'] is False:
             status = 0
+        LOG.debug("_setup_vip_args = %s, %s, %d", s_pers, c_pers, status)
         return s_pers, c_pers, status
 
     def create_vip(self, context, vip):
         a10 = self._device_context(tenant_id=vip['tenant_id'])
-        s_pers, c_pers, status = self._setup_vip_args(vip)
+        s_pers, c_pers, status = self._setup_vip_args(a10, vip)
 
         try:
             a10.virtual_server_create(vip['id'], vip['address'],
@@ -98,7 +95,7 @@ class ThunderDriver(abstract_driver.LoadBalancerAbstractDriver):
 
     def update_vip(self, context, old_vip, vip):
         a10 = self._device_context(tenant_id=vip['tenant_id'])
-        s_pers, c_pers, status = self._setup_vip_args(vip)
+        s_pers, c_pers, status = self._setup_vip_args(a10, vip)
 
         try:
             a10.virtual_port_update(vip['id'], vip['protocol'],

@@ -21,12 +21,12 @@ def find(str, regex):
 
 class NeutronLB(object):
 
-    def __init__(self, lb_method='ROUND_ROBIN', protocol='HTTP',
-                 persistence=None):
+    def __init__(self, lb_method='ROUND_ROBIN', protocol='HTTP'):
         self.instance_subnet_id = self.get_subnet_id(e.INSTANCE_NETWORK_NAME)
         self.lb_subnet_id = self.get_subnet_id(e.LB_NETWORK_NAME)
         self.pool_name = self._random_hex()
-        self.lb_pool_create(self.pool_name, self.instance_subnet_id)
+        self.lb_pool_create(self.pool_name, self.instance_subnet_id,
+                            lb_method, protocol)
         self.members = {}
 
     def _random_hex(self):
@@ -57,8 +57,7 @@ class NeutronLB(object):
     # method: None, ROUND_ROBIN, LEAST_CONNECTIONS, SOURCE_IP
     # protocol: HTTP, HTTPS, TCP
     def lb_pool_create(self, pool_name, subnet_id, method='ROUND_ROBIN',
-                       protocol='HTTP',
-                       ):
+                       protocol='HTTP'):
         self._neutron(['lb-pool-create', '--name', pool_name,
                        '--lb-method', method, '--protocol', protocol,
                        '--subnet-id', subnet_id])
@@ -72,10 +71,15 @@ class NeutronLB(object):
     # persistence: None, HTTP_COOKIE, SOURCE_IP, APP_COOKIE
     def vip_create(self, port=80, protocol='HTTP', persistence=None):
         self.vip_name = self._random_hex()
-        r = self._neutron(['lb-vip-create', '--name', self.vip_name,
-                           '--protocol', protocol,
-                           '--protocol-port', str(port),
-                           '--subnet-id', self.lb_subnet_id, self.pool_name])
+        a = ['lb-vip-create', '--name', self.vip_name,
+             '--protocol', protocol,
+             '--protocol-port', str(port),
+             '--subnet-id', self.lb_subnet_id, self.pool_name]
+        if persistence is not None:
+            a.append('--session-persistence')
+            a.append('type=dict')
+            a.append("type=%s" % persistence)
+        r = self._neutron(a)
         port_id = find(r, "^\| port_id.*\| ([^\s]+)")
         self.vip_ip = find(r, "^\| address.*\| ([^\s]+)")
         print "INTERNAL VIP_IP ", self.vip_ip
@@ -208,8 +212,8 @@ def verify_ax(template_name='base'):
 
 
 def setup_lb(lb_method, protocol, persistence):
-    lb = NeutronLB(lb_method, protocol, persistence)
-    lb.vip_create()
+    lb = NeutronLB(lb_method=lb_method, protocol=protocol)
+    lb.vip_create(protocol=protocol, persistence=persistence)
 
     member_list = [e.MEMBER1_IP, e.MEMBER2_IP]
     for ip in member_list:
@@ -262,7 +266,11 @@ def end_to_end(lb_method, protocol, persistence, url_base):
 
 
 def test_lb():
-    end_to_end(None, 'HTTP', None, 'http://')
+    end_to_end('ROUND_ROBIN', 'HTTP', None, 'http://')
+
+
+def test_alt_lb():
+    end_to_end('LEAST_CONNECTIONS', 'HTTP', 'HTTP_COOKIE', 'http://')
 
 
 def test_lb_matrix():
@@ -271,7 +279,7 @@ def test_lb_matrix():
         ('TCP', 'http://'),
         ('HTTPS', 'https://')
     ]
-    methods = [None, 'ROUND_ROBIN', 'LEAST_CONNECTIONS', 'SOURCE_IP']
+    methods = ['ROUND_ROBIN', 'LEAST_CONNECTIONS', 'SOURCE_IP']
     persists = [None, 'HTTP_COOKIE', 'SOURCE_IP', 'APP_COOKIE']
     for protocol, url_base in protocols:
         for method in methods:

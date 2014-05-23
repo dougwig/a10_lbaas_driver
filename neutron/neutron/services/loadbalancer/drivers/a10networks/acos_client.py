@@ -95,6 +95,8 @@ class A10Client():
             "User-Agent": "OS-LBaaS-AGENT"
         }
 
+        LOG.debug("axapi_http: start")
+        LOG.debug("axapi_http: url = %s", api_url)
         LOG.debug("axapi_http: params = %s", params)
 
         url = self.base_url + api_url
@@ -204,7 +206,6 @@ class A10Client():
             self.close_session(tenant_id=tenant_id)
             LOG.debug("session closed")
 
-        LOG.debug('response = %s', r)
         return r
 
     def close_session(self, tenant_id=""):
@@ -341,46 +342,42 @@ class A10Client():
     def inspect_response(self, response, func=None):
         LOG.debug("inspect_response: %s", response)
         if 'response' in response:
+            true_in = [
+                "src_ip_persistence_template",
+                "vport",
+                "virtual_server",
+                "service_group",
+                "server",
+                "health_monitor"
+            ]
+            not_found = [
+                33619968,
+                67305473,
+                1023
+            ]
+            magic_codes_good = [
+                67239937,
+                2941
+            ]
+            if 'err' in response['response']:
+                c = response['response']['err']['code']
+
             # indicates configuration already exist continue processing.
             if response['response']['status'] == "OK":
                 return True
-            elif "src_ip_persistence_template" in response:
+            elif any([x in response for x in true_in]):
                 return True
-            elif "vport" in response:
-                return True
-            elif "virtual_server" in response:
-                return True
-            elif "service_group" in response:
-                return True
-            elif "server" in response:
-                return True
-            elif "health_monitor" in response:
-                return True
-            elif 67239937 == response['response']['err']['code']:
-                return True
-            elif 33619968 == response['response']['err']['code']:
-                if func == 'delete':
+            elif any([x for x in not_found if x == c]):
+                if func is 'delete':
                     # delete and 'not found', be silent
                     return True
                 else:
                     return False
-            elif 67305473 == response['response']['err']['code']:
-                if func == 'delete':
-                    # delete and 'not found', be silent
-                    return True
-                else:
-                    return False
-            elif 2941 == response['response']['err']['code']:
+            elif any([x for x in magic_codes_good if x == c]):
                 return True
             elif 'such' in response:
                 LOG.debug('FOUND SUCH IN RESPONSE')
                 return True
-            elif 1023 == response['response']['err']['code']:
-                if func == 'delete':
-                    # delete and 'not found', be silent
-                    return True
-                else:
-                    return False
             else:
                 return False
 
@@ -733,18 +730,14 @@ class A10Client():
                             interval, timeout, max_retries,
                             method=None, url=None, expect_code=None):
 
+        hm_req = request_struct_root.toDict().items()
         if mon_type == 'TCP':
-            hm_req = request_struct_root.toDict().items()
             hm_obj = request_struct_v2.TCP_HM_OBJ.ds.toDict()
         elif mon_type == 'PING':
-            pass
-            hm_req = request_struct_root.toDict().items()
             hm_obj = request_struct_v2.ICMP_HM_OBJ.ds.toDict()
         elif mon_type == 'HTTP':
-            hm_req = request_struct_root.toDict().items()
             hm_obj = request_struct_v2.HTTP_HM_OBJ.ds.toDict()
         elif mon_type == 'HTTPS':
-            hm_req = request_struct_root.toDict().items()
             hm_obj = request_struct_v2.HTTPS_HM_OBJ.ds.toDict()
         else:
             raise a10_ex.HealthMonitorUpdateError(hm=name)
@@ -754,13 +747,9 @@ class A10Client():
         hm_obj['timeout'] = timeout
         hm_obj['consec_pass_reqd'] = max_retries
 
-        cmd = "%s %s" % (method, url)
-        if mon_type == 'HTTP':
-            hm_obj['http']['url'] = cmd
-            hm_obj['http']['expect_code'] = expect_code
-        elif mon_type == 'HTTPS':
-            hm_obj['https']['url'] = cmd
-            hm_obj['https']['expect_code'] = expect_code
+        mt = mon_type.lower()
+        hm_obj[mt]['url'] = "%s %s" % (method, url)
+        hm_obj[mt]['expect_code'] = expect_code
 
         r = self.send(tenant_id=self.tenant_id,
                       method=hm_req[0][0],
