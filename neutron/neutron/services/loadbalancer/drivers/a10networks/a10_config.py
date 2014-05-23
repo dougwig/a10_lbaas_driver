@@ -31,7 +31,7 @@ class A10Config(object):
         self.devices = {}
 
         for key, j in self.config.items('a10networks'):
-            h = json.loads(j.replace("\n", "", len(i[1])))
+            h = json.loads(j.replace("\n", "", len(j)))
 
             status = False
             if 'status' in h:

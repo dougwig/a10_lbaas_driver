@@ -24,20 +24,21 @@ import a10_config
 import a10_exceptions as a10_ex
 import acos_client
 
+VERSION = "0.3.1"
 LOG = logging.getLogger(__name__)
 
 
 class ThunderDriver(abstract_driver.LoadBalancerAbstractDriver):
 
     def __init__(self, plugin):
-        LOG.debug("THUNDER: driver initializing")
+        LOG.info("A10Driver: init version=%s", VERSION)
         self.plugin = plugin
         self.config = a10_config.A10Config()
         self._verify_appliances()
 
     def _verify_appliances(self):
-        LOG.info("A10Client: verifying appliances")
-        for k, v in self.config.devices.items('a10networks'):
+        LOG.info("A10Driver: verifying appliances")
+        for k, v in self.config.devices.items():
             acos_client.A10Client(self.config, device_info=v,
                                   version_check=True)
 

@@ -35,21 +35,20 @@ from neutron.openstack.common import log as logging
 LOG = logging.getLogger(__name__)
 
 
-VERSION = "0.3.1"
-
-
 class A10Client():
 
     def __init__(self, config, tenant_id="", device_info=None,
                  version_check=False):
-        LOG.info("A10Client init: version=%s, tenant=%s", VERSION, tenant_id)
-
         self.config = config
+        self.tenant_id = tenant_id
+
         if device_info is None:
             self.device_info = self.select_device(tenant_id=tenant_id)
         else:
             self.device_info = device_info
         self.set_base_url()
+
+        LOG.debug("A10Client init: connecting %s", self.base_url)
 
         self.force_tlsv1 = False
 
@@ -63,9 +62,7 @@ class A10Client():
         if version_check:
             self.check_version()
 
-        self.tenant_id = tenant_id
-
-        LOG.info("A10Client init: connected, session_id=%s", self.session_id)
+        LOG.debug("A10Client init: connected, session_id=%s", self.session_id)
 
     def set_base_url(self):
         protocol = "https"
