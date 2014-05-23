@@ -93,9 +93,9 @@ service_provider = LOADBALANCER:A10Networks:neutron.services.loadbalancer.driver
 
 ### Step 5:
 
-Create and configure the a10networks section of the a10networks_config.ini. The file is located in:
+Create and configure the a10networks section of the a10networks/config.py file. The file is located in:
 
-`/etc/neutron/services/loadbalancer/a10networks/a10networks_config.ini`
+`/etc/neutron/services/loadbalancer/a10networks/config.py`
 
 In the example given below, we show various configuration options for every device added to the network, specifying the maximum number of LSI objects and ADP partitions which can be issued per device. In this case, we configured two different nodes for LSI and ADP. Note that you can add up to 50 nodes.
 
@@ -113,9 +113,7 @@ In the example given below, we show various configuration options for every devi
 #         host:<IP|FQDN>
 #         username:acos user
 #         password:user password
-#         skip_version_check: True if driver verification of ACOS version
-#             should be skipped.  Default: false
-#         status: True if ax should be used, false otherwise.  Default: True
+#         status: can be configued
 #         autosnat: Source address translation is configured on the VIP.
 #         api_version: API version
 #         v_method: Choices in this version(ADP, LSI)
@@ -128,17 +126,23 @@ In the example given below, we show various configuration options for every devi
 #         "method": Placement policy. right now hash is th only thing supported. This is utilized if there ar more than one
 #         acos device configured.
 
-[a10networks]
-ax1 = {"name":"ax1", "host": "192.168.212.120",
-               "username": "admin",
-               "password": "a10", "status": "1", "autosnat": "True",
-      "api_version": "2.1", "v_method": "LSI",
-               "max_instance": "5000" , "use_float": "True", "method": "hash"}
-ax2 = {"name":"ax2", "host": "192.168.212.10",
-      "username": "admin",
-      "password": "a10", "status": "1", "autosnat": "True",
-      "api_version": "2.1", "v_method": "ADP",
-      "max_instance": "5000" , "use_float": "True", "method": "hash"}
+devices = {
+    "ax1": {
+        "name":"ax1",
+        "host": "10.10.100.20",
+        "port": 8443,
+        "protocol": "https",
+        "username": "admin",
+        "password": "a10",
+        "status": True,
+        "autosnat": True,
+        "api_version": "2.1",
+        "v_method": "LSI",
+        "max_instance": 5000,
+        "use_float": True,
+        "method": "hash"
+    }
+}
 ```
 ### Step 6:
 
@@ -181,3 +185,12 @@ Login to the GUI on your Thunder or AX device, and validate which configuration 
 _Repeat this for all configuration steps, then delete all resources if ADPs are configured. They should be deleted when the tenant has no more resources configured._
 
 __Need further clarification on this.__
+
+## Contributing
+
+1. Fork it
+2. Create your feature branch (`git checkout -b my-new-feature`)
+3. Commit your changes (`git commit -am 'Add some feature'`)
+4. Push to the branch (`git push origin my-new-feature`)
+5. Create new Pull Request
+

@@ -34,34 +34,35 @@ from neutron.openstack.common import log as logging
 # Neutron logs
 LOG = logging.getLogger(__name__)
 
-device_config = ConfigParser()
-device_config.read('/etc/neutron/services/loadbalancer/'
-                   'a10networks/a10networks_config.ini')
-LOG.debug("THUNDER: read ini file")
-
-VERSION = "0.3.0"
-
 
 class A10Client():
 
-    def __init__(self, tenant_id=""):
-        LOG.info("A10Client init: driver_version=%s, tenant_id=%s",
-                 VERSION, tenant_id)
-        self.device_info = self.select_device(tenant_id=tenant_id)
+    def __init__(self, config, tenant_id="", device_info=None,
+                 version_check=False):
+        self.config = config
+        self.tenant_id = tenant_id
+
+        if device_info is None:
+            self.device_info = self.select_device(tenant_id=tenant_id)
+        else:
+            self.device_info = device_info
         self.set_base_url()
 
+        LOG.debug("A10Client init: connecting %s", self.base_url)
+
         self.force_tlsv1 = False
+
         self.session_id = None
         self.get_session_id()
         if self.session_id is None:
             msg = _("A10Client: unable to get session_id from ax")
             LOG.error(msg)
             raise a10_ex.A10ThunderNoSession()
-        self.check_version()
 
-        self.tenant_id = tenant_id
-        LOG.info("A10Client init: successfully connected, session_id=%s",
-                 self.session_id)
+        if version_check:
+            self.check_version()
+
+        LOG.debug("A10Client init: connected, session_id=%s", self.session_id)
 
     def set_base_url(self):
         protocol = "https"
@@ -168,25 +169,21 @@ class A10Client():
                     try:
                         self.partition_active(tenant_id=tenant_id)
                     except:
-                        LOG.debug(traceback.format_exc())
                         raise a10_ex.PartitionActiveError(
                             partition=tenant_id[0:13])
                 else:
                     try:
                         self.partition_create(tenant_id=tenant_id)
                     except:
-                        LOG.debug(traceback.format_exc())
                         raise a10_ex.PartitionCreateError(
                             partition=tenant_id[0:13])
                     finally:
                         try:
                             self.partition_active(tenant_id=tenant_id)
                         except:
-                            LOG.debug(traceback.format_exc())
                             raise a10_ex.PartitionActiveError(
                                 partition=tenant_id[0:13])
             except:
-                LOG.debug(traceback.format_exc())
                 raise a10_ex.SearchError(term="Partition Discovery for %s"
                                          % tenant_id[0:13])
 
@@ -279,29 +276,7 @@ class A10Client():
                          url=req_info[0][1] % self.session_id,
                          body={"name": name}, new_session=new_session)
 
-    def get_devices(self):
-        self.devices = {}
-
-        for i in device_config.items('a10networks'):
-            key = i[0]
-            h = json.loads(i[1].replace("\n", "", len(i[1])))
-
-            status = False
-            if 'status' in h:
-                s = str(h['status'])
-                if s[0].upper() == 'T' or s[0] == '1':
-                    status = True
-            else:
-                status = True
-
-            if status:
-                self.devices[key] = h
-
-        LOG.debug("DEVICES_DICT---> %s", self.devices)
-
     def select_device(self, tenant_id=""):
-        self.get_devices()
-
         nodes = 256
         # node_prefix = "a10"
         node_list = []
@@ -310,7 +285,7 @@ class A10Client():
             node_list.insert(x, (x, []))
             x += 1
         z = 0
-        key_list = self.devices.keys()
+        key_list = self.config.devices.keys()
         LOG.debug("THIS IS THE KEY LIST %s", key_list)
         while z < nodes:
             for key in key_list:
@@ -321,7 +296,7 @@ class A10Client():
                     result = 0
                 else:
                     result = result + 1
-                node_list[result][1].insert(result, self.devices[key])
+                node_list[result][1].insert(result, self.config.devices[key])
 
             z += 1
         tenant_hash = int(hashlib.sha256(tenant_id).hexdigest(), 16)
@@ -477,10 +452,15 @@ class A10Client():
 
         if s_pers is not None:
             vport_obj['source_ip_persistence_template'] = s_pers
-        elif c_pers is not None:
-            vport_obj['cookie_persistence_template'] = c_pers
+        else:
+            vport_obj['source_ip_persistence_template'] = ""
 
-        if 'True' in self.device_info['autosnat']:
+        if c_pers is not None:
+            vport_obj['cookie_persistence_template'] = c_pers
+        else:
+            vport_obj['cookie_persistence_template'] = ""
+
+        if self.device_info['autosnat']:
             vport_obj['source_nat_auto'] = 1
         vs['vport_list'] = [vport_obj]
 

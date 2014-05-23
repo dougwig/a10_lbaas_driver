@@ -14,31 +14,36 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
-import traceback
-
-import a10_exceptions as a10_ex
-import request_struct_v2
-
 from neutron.db import l3_db
 from neutron.db.loadbalancer import loadbalancer_db as lb_db
 from neutron.openstack.common import log as logging
 from neutron.plugins.common import constants
 from neutron.services.loadbalancer.drivers import abstract_driver
 
-from acos_client import A10Client
+import a10_config
+import a10_exceptions as a10_ex
+import acos_client
 
-
+VERSION = "0.3.1"
 LOG = logging.getLogger(__name__)
 
 
 class ThunderDriver(abstract_driver.LoadBalancerAbstractDriver):
 
     def __init__(self, plugin):
-        LOG.debug("THUNDER: driver init")
+        LOG.info("A10Driver: init version=%s", VERSION)
         self.plugin = plugin
+        self.config = a10_config.A10Config()
+        self._verify_appliances()
+
+    def _verify_appliances(self):
+        LOG.info("A10Driver: verifying appliances")
+        for k, v in self.config.devices.items():
+            acos_client.A10Client(self.config, device_info=v,
+                                  version_check=True)
 
     def _device_context(self, tenant_id=""):
-        return A10Client(tenant_id=tenant_id)
+        return acos_client.A10Client(self.config, tenant_id=tenant_id)
 
     def _active(self, context, model, vid):
         self.plugin.update_status(context, model, vid, constants.ACTIVE)
@@ -55,7 +60,6 @@ class ThunderDriver(abstract_driver.LoadBalancerAbstractDriver):
                 return name
             a10.persistence_create(persist_type, name)
         except:
-            LOG.debug(traceback.format_exc())
             raise a10_ex.TemplateCreateError(template=name)
 
         return name
@@ -89,7 +93,6 @@ class ThunderDriver(abstract_driver.LoadBalancerAbstractDriver):
             self._active(context, lb_db.Vip, vip['id'])
 
         except:
-            LOG.debug(traceback.format_exc())
             self._failed(context, lb_db.Vip, vip['id'])
             raise a10_ex.VipCreateError(vip=vip['id'])
 
@@ -104,7 +107,6 @@ class ThunderDriver(abstract_driver.LoadBalancerAbstractDriver):
             self._active(context, lb_db.Vip, vip['id'])
 
         except:
-            LOG.debug(traceback.format_exc())
             self._failed(context, lb_db.Vip, vip['id'])
             raise a10_ex.VipUpdateError(vip=vip['id'])
 
@@ -115,13 +117,12 @@ class ThunderDriver(abstract_driver.LoadBalancerAbstractDriver):
                 a10.persistence_delete(vip['session_persistence']['type'],
                                        vip['id'])
         except:
-            LOG.debug(traceback.format_exc())
+            pass
 
         try:
             a10.virtual_server_delete(vip['id'])
             self.plugin._delete_db_vip(context, vip['id'])
         except:
-            LOG.debug(traceback.format_exc())
             self._failed(context, lb_db.Vip, vip['id'])
             raise a10_ex.VipDeleteError(vip=vip['id'])
 
@@ -139,7 +140,6 @@ class ThunderDriver(abstract_driver.LoadBalancerAbstractDriver):
             self._active(context, lb_db.Pool, pool['id'])
         except:
             self._failed(context, lb_db.Pool, pool['id'])
-            LOG.debug(traceback.format_exc())
             raise a10_ex.SgCreateError(sg=pool['id'])
 
     def update_pool(self, context, old_pool, pool):
@@ -156,7 +156,6 @@ class ThunderDriver(abstract_driver.LoadBalancerAbstractDriver):
             self._active(context, lb_db.Pool, pool['id'])
         except:
             self._failed(context, lb_db.Pool, pool['id'])
-            LOG.debug(traceback.format_exc())
             raise a10_ex.SgUpdateError(sg=pool['id'])
 
     def delete_pool(self, context, pool):
@@ -221,7 +220,7 @@ class ThunderDriver(abstract_driver.LoadBalancerAbstractDriver):
 
     def _get_member_ip(self, context, member, a10):
         ip_address = member['address']
-        if 'True' in a10.device_info['use_float']:
+        if a10.device_info['use_float']:
             fip_qry = context.session.query(l3_db.FloatingIP)
             if (fip_qry.filter_by(fixed_ip_address=ip_address).count() > 0):
                 float_address = fip_qry.filter_by(
@@ -245,7 +244,6 @@ class ThunderDriver(abstract_driver.LoadBalancerAbstractDriver):
             if 'server' not in a10.server_get(server_name):
                 a10.server_create(server_name, ip_address)
         except:
-            LOG.debug(traceback.format_exc())
             self._failed(context, lb_db.Member, member["id"])
             raise a10_ex.MemberCreateError(member=server_name)
 
@@ -258,7 +256,6 @@ class ThunderDriver(abstract_driver.LoadBalancerAbstractDriver):
                               member['protocol_port'], status)
             self._active(context, lb_db.Member, member["id"])
         except:
-            LOG.debug(traceback.format_exc())
             self._failed(context, lb_db.Member, member["id"])
             raise a10_ex.MemberCreateError(member=server_name)
 
@@ -277,7 +274,6 @@ class ThunderDriver(abstract_driver.LoadBalancerAbstractDriver):
                               member['protocol_port'], status)
             self._active(context, lb_db.Member, member["id"])
         except:
-            LOG.debug(traceback.format_exc())
             self._failed(context, lb_db.Member, member["id"])
             raise a10_ex.MemberUpdateError(member=server_name)
 
@@ -300,7 +296,6 @@ class ThunderDriver(abstract_driver.LoadBalancerAbstractDriver):
                 a10.server_delete(server_name)
                 self.plugin._delete_db_member(context, member['id'])
         except:
-            LOG.debug(traceback.format_exc())
             self._failed(context, lb_db.Member, member["id"])
             raise a10_ex.MemberDeleteError(member=member["id"])
 
@@ -324,7 +319,6 @@ class ThunderDriver(abstract_driver.LoadBalancerAbstractDriver):
                                                    constants.ACTIVE)
 
         except:
-            LOG.debug(traceback.format_exc())
             raise a10_ex.HealthMonitorUpdateError(hm=hm_name)
 
     def create_pool_health_monitor(self, context, health_monitor, pool_id):
@@ -348,7 +342,6 @@ class ThunderDriver(abstract_driver.LoadBalancerAbstractDriver):
                                                    pool_id,
                                                    constants.ACTIVE)
         except:
-            LOG.debug(traceback.format_exc())
             self.plugin.update_pool_health_monitor(context,
                                                    health_monitor["id"],
                                                    pool_id,
@@ -374,7 +367,6 @@ class ThunderDriver(abstract_driver.LoadBalancerAbstractDriver):
                                                        health_monitor['id'],
                                                        pool_id)
         except:
-            LOG.debug(traceback.format_exc())
             self.plugin.update_pool_health_monitor(context,
                                                    health_monitor["id"],
                                                    pool_id,
