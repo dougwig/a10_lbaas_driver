@@ -21,11 +21,12 @@ def find(str, regex):
 
 class NeutronLB(object):
 
-    def __init__(self):
+    def __init__(self, lb_method='ROUND_ROBIN', protocol='HTTP'):
         self.instance_subnet_id = self.get_subnet_id(e.INSTANCE_NETWORK_NAME)
         self.lb_subnet_id = self.get_subnet_id(e.LB_NETWORK_NAME)
         self.pool_name = self._random_hex()
-        self.lb_pool_create(self.pool_name, self.instance_subnet_id)
+        self.lb_pool_create(self.pool_name, self.instance_subnet_id,
+                            lb_method, protocol)
         self.members = {}
 
     def _random_hex(self):
@@ -53,6 +54,8 @@ class NeutronLB(object):
         r = self._neutron(['net-show', network_name])
         return find(r, "^\| subnets.*\| ([^\s]+)")
 
+    # method: None, ROUND_ROBIN, LEAST_CONNECTIONS, SOURCE_IP
+    # protocol: HTTP, HTTPS, TCP
     def lb_pool_create(self, pool_name, subnet_id, method='ROUND_ROBIN',
                        protocol='HTTP'):
         self._neutron(['lb-pool-create', '--name', pool_name,
@@ -64,12 +67,19 @@ class NeutronLB(object):
         r = self._neutron(['lb-pool-delete', self.pool_name])
         assert r.strip() == "Deleted pool: %s" % self.pool_name
 
-    def vip_create(self, port=80, protocol='HTTP'):
+    # protocol: TCP, HTTP, HTTPS
+    # persistence: None, HTTP_COOKIE, SOURCE_IP, APP_COOKIE
+    def vip_create(self, port=80, protocol='HTTP', persistence=None):
         self.vip_name = self._random_hex()
-        r = self._neutron(['lb-vip-create', '--name', self.vip_name,
-                           '--protocol', protocol,
-                           '--protocol-port', str(port),
-                           '--subnet-id', self.lb_subnet_id, self.pool_name])
+        a = ['lb-vip-create', '--name', self.vip_name,
+             '--protocol', protocol,
+             '--protocol-port', str(port),
+             '--subnet-id', self.lb_subnet_id, self.pool_name]
+        if persistence is not None:
+            a.append('--session-persistence')
+            a.append('type=dict')
+            a.append("type=%s" % persistence)
+        r = self._neutron(a)
         port_id = find(r, "^\| port_id.*\| ([^\s]+)")
         self.vip_ip = find(r, "^\| address.*\| ([^\s]+)")
         print "INTERNAL VIP_IP ", self.vip_ip
@@ -88,6 +98,10 @@ class NeutronLB(object):
     def member_destroy(self, ip_address):
         self._neutron(['lb-member-delete', self.members[ip_address]])
 
+    # expected: 200, 200-299, 200,201
+    # http_method: GET, POST
+    # url_path: URL, "/"
+    # mon_type: PING, TCP, HTTP, HTTPS
     def monitor_create(self, delay=5, retries=5, timeout=5, mon_type='HTTP'):
         r = self._neutron(['lb-healthmonitor-create', '--delay', str(delay),
                            '--max-retries', str(retries),
@@ -197,15 +211,9 @@ def verify_ax(template_name='base'):
 #     lb.vip_create()
 
 
-def test_lb():
-    e.demo_creds()
-
-    verify_ax()
-
-    # Step 1, setup LB via neutron
-
-    lb = NeutronLB()
-    lb.vip_create()
+def setup_lb(lb_method, protocol, persistence):
+    lb = NeutronLB(lb_method=lb_method, protocol=protocol)
+    lb.vip_create(protocol=protocol, persistence=persistence)
 
     member_list = [e.MEMBER1_IP, e.MEMBER2_IP]
     for ip in member_list:
@@ -213,19 +221,17 @@ def test_lb():
 
     lb.monitor_create()
     lb.monitor_associate()
+    return lb
 
-    # Step 2, grab the configuration from the AX and verify
 
-    verify_ax('lb')
-
-    # Step 3, pull some data through the LB and verify
-
+def pull_data(url_base, vip_ip):
+    member_list = [e.MEMBER1_IP, e.MEMBER2_IP]
     members = {}
     for ip in member_list:
         members[ip] = requests.get("http://%s/" % ip).text
 
-    print "LB URL ", "http://%s/" % lb.vip_ip
-    lb_data = requests.get("http://%s/" % lb.vip_ip).text
+    print "LB URL ", "%s%s/" % (url_base, vip_ip)
+    lb_data = requests.get("%s%s/" % (url_base, vip_ip)).text
     print "DATA LB ++%s++" % lb_data
 
     matching_data = False
@@ -236,6 +242,46 @@ def test_lb():
 
     assert matching_data
 
-    lb.destroy()
+
+def end_to_end(lb_method, protocol, persistence, url_base):
+    e.demo_creds()
+    verify_ax()
+
+    # Step 1, setup LB via neutron
+    lb = setup_lb(lb_method, protocol, persistence)
+
+    # Step 2, grab the configuration from the AX and verify
+    verify_ax('lb')
+
+    # Step 3, pull some data through the LB and verify
+    pull_data(url_base, lb.vip_ip)
 
     # Whoa, all done, success.
+    lb.destroy()
+
+    # method: None, ROUND_ROBIN, LEAST_CONNECTIONS, SOURCE_IP
+    # protocol: HTTP, HTTPS, TCP
+    # protocol: TCP, HTTP, HTTPS
+    # persistence: None, HTTP_COOKIE, SOURCE_IP, APP_COOKIE
+
+
+def test_lb():
+    end_to_end('ROUND_ROBIN', 'HTTP', None, 'http://')
+
+
+def test_alt_lb():
+    end_to_end('LEAST_CONNECTIONS', 'HTTP', 'HTTP_COOKIE', 'http://')
+
+
+def test_lb_matrix():
+    protocols = [
+        ('HTTP', 'http://'),
+        ('TCP', 'http://'),
+        ('HTTPS', 'https://')
+    ]
+    methods = ['ROUND_ROBIN', 'LEAST_CONNECTIONS', 'SOURCE_IP']
+    persists = [None, 'HTTP_COOKIE', 'SOURCE_IP', 'APP_COOKIE']
+    for protocol, url_base in protocols:
+        for method in methods:
+            for persistence in persists:
+                end_to_end(method, protocol, persistence, url_base)

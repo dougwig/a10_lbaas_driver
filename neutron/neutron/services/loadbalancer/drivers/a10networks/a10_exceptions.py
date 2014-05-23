@@ -14,123 +14,134 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
+import sys
+
 from neutron.common import exceptions
+from neutron.openstack.common import log as logging
+
+LOG = logging.getLogger(__name__)
 
 
-class A10ThunderException(exceptions.NeutronException):
+class A10BaseException(exceptions.NeutronException):
+    def __init__(self, **kwargs):
+        LOG.debug("A10BaseException", exc_info=sys.exc_info())
+        super(A10BaseException, self).__init__(**kwargs)
+
+
+class A10ThunderException(A10BaseException):
     msg = _('An unknown exception'
             'occurred in A10LBaaS provider.')
 
 
-class A10ThunderNoSession(exceptions.NeutronException):
+class A10ThunderNoSession(A10BaseException):
     msg = _('Unable to get session id from appliance')
 
 
-class A10ThunderVersionMismatch(exceptions.NeutronException):
+class A10ThunderVersionMismatch(A10BaseException):
     msg = _("A10Client: driver requires ACOS version 2.7.2+")
 
 
-class UnsupportedFeatureAppCookie(exceptions.NeutronException):
+class UnsupportedFeatureAppCookie(A10BaseException):
     msg = _(
         'This version of the driver does not support this'
         ' feature in this release.')
 
 
-class VipCreateError(exceptions.NeutronException):
+class VipCreateError(A10BaseException):
     msg = _(
         'VIP %(vip) could not be created.')
 
 
-class VipUpdateError(exceptions.NeutronException):
+class VipUpdateError(A10BaseException):
     msg = _(
         'VIP %(vip) could not be Updated.')
 
 
-class VipDeleteError(exceptions.NeutronException):
+class VipDeleteError(A10BaseException):
     msg = _(
         'VIP %(vip) could not be Deleted.')
 
 
-class SgCreateError(exceptions.NeutronException):
+class SgCreateError(A10BaseException):
     msg = _(
         'ServiceGroup %(sg) could not be created.')
 
 
-class SgUpdateError(exceptions.NeutronException):
+class SgUpdateError(A10BaseException):
     msg = _(
         'ServiceGroup %(sg) could not be Updated.')
 
 
-class SgDeleteError(exceptions.NeutronException):
+class SgDeleteError(A10BaseException):
     msg = _(
         'ServiceGroup %(sg) could not be Deleted.')
 
 
-class MemberCreateError(exceptions.NeutronException):
+class MemberCreateError(A10BaseException):
     msg = _(
         'Member %(member) could not be created.')
 
 
-class MemberUpdateError(exceptions.NeutronException):
+class MemberUpdateError(A10BaseException):
     msg = _(
         'Member %(member) could not be Updated.')
 
 
-class MemberDeleteError(exceptions.NeutronException):
+class MemberDeleteError(A10BaseException):
     msg = _(
         'Member %(member) could not be Deleted.')
 
 
-class ParitionCreateError(exceptions.NeutronException):
+class ParitionCreateError(A10BaseException):
     msg = _(
         'Parition %(parition) could not be created.')
 
 
-class ParitionUpdateError(exceptions.NeutronException):
+class ParitionUpdateError(A10BaseException):
     msg = _(
         'Parition %(parition) could not be Updated.')
 
 
-class ParitionDeleteError(exceptions.NeutronException):
+class ParitionDeleteError(A10BaseException):
     msg = _(
         'Parition %(parition) could not be Deleted.')
 
 
-class ParitionActiveError(exceptions.NeutronException):
+class ParitionActiveError(A10BaseException):
     msg = _(
         'Parition %(parition) could not be made active.')
 
 
-class HealthMonitorCreateError(exceptions.NeutronException):
+class HealthMonitorCreateError(A10BaseException):
     msg = _(
         'HealthMonitor %(hm) could not be created.')
 
 
-class HealthMonitorUpdateError(exceptions.NeutronException):
+class HealthMonitorUpdateError(A10BaseException):
     msg = _(
         'HealthMonitor %(hm) could not be Updated.')
 
 
-class HealthMonitorDeleteError(exceptions.NeutronException):
+class HealthMonitorDeleteError(A10BaseException):
     msg = _(
         'HealthMonitor %(hm) could not be Deleted.')
 
 
-class TemplateCreateError(exceptions.NeutronException):
+class TemplateCreateError(A10BaseException):
     msg = _(
         'Template %(template) could not be created.')
 
 
-class TemplateUpdateError(exceptions.NeutronException):
+class TemplateUpdateError(A10BaseException):
     msg = _(
         'Template %(template) could not be Updated.')
 
 
-class TemplateDeleteError(exceptions.NeutronException):
+class TemplateDeleteError(A10BaseException):
     msg = _(
         'Template %(template) could not be Deleted.')
 
 
-class SearchError(exceptions.NeutronException):
+class SearchError(A10BaseException):
     msg = _(
         'Search Error: %(term)')

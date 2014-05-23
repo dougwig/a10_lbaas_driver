@@ -1,5 +1,4 @@
 # A10 Networks LBaaS Driver for Thunder and AX Series Appliances
-Mike Thompson
 
 ## Introduction:
 
