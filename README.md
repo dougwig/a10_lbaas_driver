@@ -181,3 +181,12 @@ Login to the GUI on your Thunder or AX device, and validate which configuration 
 _Repeat this for all configuration steps, then delete all resources if ADPs are configured. They should be deleted when the tenant has no more resources configured._
 
 __Need further clarification on this.__
+
+## Contributing
+
+1. Fork it
+2. Create your feature branch (`git checkout -b my-new-feature`)
+3. Commit your changes (`git commit -am 'Add some feature'`)
+4. Push to the branch (`git push origin my-new-feature`)
+5. Create new Pull Request
+
