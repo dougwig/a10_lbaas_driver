@@ -37,15 +37,12 @@ LOG = logging.getLogger(__name__)
 
 class A10Client():
 
-    def __init__(self, config, tenant_id="", device_info=None,
+    def __init__(self, config, tenant_id="", dev_info=None,
                  version_check=False):
         self.config = config
         self.tenant_id = tenant_id
 
-        if device_info is None:
-            self.device_info = self.select_device(tenant_id=tenant_id)
-        else:
-            self.device_info = device_info
+        self.device_info = dev_info or self.select_device(tenant_id=tenant_id)
         self.set_base_url()
 
         LOG.debug("A10Client init: connecting %s", self.base_url)
@@ -187,10 +184,12 @@ class A10Client():
                 raise a10_ex.SearchError(term="Partition Discovery for %s"
                                          % tenant_id[0:13])
 
-    def send(self, tenant_id="", method="", url="", body={}, new_session=0):
-        if self.session_id is None and new_session != 2:
+    def send(self, tenant_id="", method="", url="", body={},
+             close_session_after_request=True,
+             partition_ax=True):
+        if self.session_id is None:
             self.get_session_id()
-        if new_session != 2 and new_session != 4 and new_session != 3:
+        if partition_ax:
             self.partition(tenant_id=tenant_id)
 
         if url.find('%') >= 0 and self.session_id is not None:
@@ -198,7 +197,7 @@ class A10Client():
 
         r = self.axapi_http(method, url, body)
 
-        if new_session == 0 or new_session == 1 or new_session == 3:
+        if close_session_after_request:
             LOG.debug("about to close session after req")
             self.close_session(tenant_id=tenant_id)
             LOG.debug("session closed")
@@ -212,10 +211,10 @@ class A10Client():
                 if response['response']['status'] == "OK":
                     url = ("/services/rest/v2.1/?format=json&method=session"
                            ".close&session_id=%s" % self.session_id)
-                    results = self.send(tenant_id=tenant_id,
-                                        method="POST", url=url,
-                                        body={"session_id": self.session_id},
-                                        new_session=2)
+
+                    results = self.axapi_http("POST", url,
+                                              {"session_id": self.session_id})
+
                     if results['response']['status'] == "OK":
                         self.session_id = None
 
@@ -226,7 +225,8 @@ class A10Client():
                              "/services/rest/v2.1/?format=json&method=system"
                              ".action"
                              ".write_memory&session_id=%s" % self.session_id),
-                         new_session = 4)
+                         partition_ax=False,
+                         close_session_after_request=False)
 
     def partition_search(self, tenant_id=""):
         req_info = (request_struct_v2.PARTITION_OBJ.call.search.toDict()
@@ -234,7 +234,8 @@ class A10Client():
         response = self.send(tenant_id=tenant_id, method=req_info[0][0],
                              url=req_info[0][1] % self.session_id,
                              body={"name": self.tenant_id[0:13]},
-                             new_session=4)
+                             partition_ax=False,
+                             close_session_after_request=False)
         if 'response' in response:
             if "err" in response['response']:
                 if response['response']['err'] == 520749062:
@@ -250,9 +251,10 @@ class A10Client():
         return self.send(tenant_id=tenant_id, method=req_info[0][0],
                          url=req_info[0][1] % self.session_id,
                          body=obj,
-                         new_session=4)
+                         partition_ax=False,
+                         close_session_after_request=False)
 
-    def partition_delete(self, tenant_id="", new_session=3):
+    def partition_delete(self, tenant_id=""):
         req_info = (request_struct_v2.PARTITION_OBJ.call.delete.toDict()
                     .items())
         self.close_session(tenant_id=self.tenant_id)
@@ -260,12 +262,11 @@ class A10Client():
         r = self.send(tenant_id=tenant_id, method=req_info[0][0],
                       url=req_info[0][1] % self.session_id,
                       body={"name": self.tenant_id[0:13]},
-                      new_session=new_session)
+                      partition_ax=False)
         if self.inspect_response(r) is not True:
             raise a10_ex.ParitionDeleteError(partition=tenant_id[0:13])
 
-    def partition_active(self, tenant_id="", default=False,
-                         new_session=4):
+    def partition_active(self, tenant_id="", default=False):
         req_info = (request_struct_v2.PARTITION_OBJ.call.active.toDict()
                     .items())
         if default is True:
@@ -274,7 +275,9 @@ class A10Client():
             name = tenant_id[0:13]
         return self.send(tenant_id=tenant_id, method=req_info[0][0],
                          url=req_info[0][1] % self.session_id,
-                         body={"name": name}, new_session=new_session)
+                         body={"name": name},
+                         partition_ax=False,
+                         close_session_after_request=False)
 
     def select_device(self, tenant_id=""):
         nodes = 256
