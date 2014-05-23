@@ -452,8 +452,13 @@ class A10Client():
 
         if s_pers is not None:
             vport_obj['source_ip_persistence_template'] = s_pers
-        elif c_pers is not None:
+        else:
+            vport_obj['source_ip_persistence_template'] = ""
+
+        if c_pers is not None:
             vport_obj['cookie_persistence_template'] = c_pers
+        else:
+            vport_obj['cookie_persistence_template'] = ""
 
         if 'True' in self.device_info['autosnat']:
             vport_obj['source_nat_auto'] = 1
