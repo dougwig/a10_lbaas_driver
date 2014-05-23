@@ -220,7 +220,7 @@ class ThunderDriver(abstract_driver.LoadBalancerAbstractDriver):
 
     def _get_member_ip(self, context, member, a10):
         ip_address = member['address']
-        if 'True' in a10.device_info['use_float']:
+        if a10.device_info['use_float']:
             fip_qry = context.session.query(l3_db.FloatingIP)
             if (fip_qry.filter_by(fixed_ip_address=ip_address).count() > 0):
                 float_address = fip_qry.filter_by(

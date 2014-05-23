@@ -460,7 +460,7 @@ class A10Client():
         else:
             vport_obj['cookie_persistence_template'] = ""
 
-        if 'True' in self.device_info['autosnat']:
+        if self.device_info['autosnat']:
             vport_obj['source_nat_auto'] = 1
         vs['vport_list'] = [vport_obj]
 
