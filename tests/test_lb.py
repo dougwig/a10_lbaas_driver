@@ -79,6 +79,8 @@ class NeutronLB(object):
             a.append('--session-persistence')
             a.append('type=dict')
             a.append("type=%s" % persistence)
+            if persistence is 'HTTP_COOKIE':
+                a.append(",cookie_name=mycookie")
         r = self._neutron(a)
         port_id = find(r, "^\| port_id.*\| ([^\s]+)")
         self.vip_ip = find(r, "^\| address.*\| ([^\s]+)")
