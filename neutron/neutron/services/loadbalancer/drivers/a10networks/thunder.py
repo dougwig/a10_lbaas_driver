@@ -39,7 +39,7 @@ class ThunderDriver(abstract_driver.LoadBalancerAbstractDriver):
     def _verify_appliances(self):
         LOG.info("A10Driver: verifying appliances")
         for k, v in self.config.devices.items():
-            acos_client.A10Client(self.config, device_info=v,
+            acos_client.A10Client(self.config, dev_info=v,
                                   version_check=True)
 
     def _device_context(self, tenant_id=""):
