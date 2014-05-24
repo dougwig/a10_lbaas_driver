@@ -69,7 +69,8 @@ class ThunderDriver(object):
         s_pers = None
         c_pers = None
         LOG.debug("_setup_vip_args vip=%s", vip)
-        if 'session_persistence' in vip:
+        if ('session_persistence' in vip and
+                vip['session_persistence'] is not None):
             LOG.debug("creating persistence template")
             pname = self._persistence_create(a10, vip)
             if vip['session_persistence']['type'] is "HTTP_COOKIE":
