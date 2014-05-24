@@ -19,11 +19,12 @@ This file is specifically for managing the API connection to
 """
 
 import hashlib
+import httplib
 import json
 import re
+import socket
 import ssl
 import traceback
-import urllib3
 
 import request_struct_v2
 import a10_exceptions as a10_ex
@@ -33,6 +34,15 @@ from neutron.openstack.common import log as logging
 
 # Neutron logs
 LOG = logging.getLogger(__name__)
+
+
+def force_tlsv1_connect(self):
+    sock = socket.create_connection((self.host, self.port), self.timeout)
+    if self._tunnel_host:
+        self.sock = sock
+        self._tunnel()
+    self.sock = ssl.wrap_socket(sock, self.key_file, self.cert_file,
+                                ssl_version=ssl.PROTOCOL_TLSv1)
 
 
 class A10Client():
@@ -62,31 +72,28 @@ class A10Client():
         LOG.debug("A10Client init: connected, session_id=%s", self.session_id)
 
     def set_base_url(self):
-        protocol = "https"
-        host = ""
+        self.protocol = "https"
+        self.host = ""
         port = "443"
 
         if "protocol" in self.device_info:
-            protocol = self.device_info['protocol']
+            self.protocol = self.device_info['protocol']
         elif port == "80":
-            protocol = "http"
-
-        host = self.device_info['host']
+            self.protocol = "http"
 
         if "port" in self.device_info:
             port = self.device_info['port']
 
-        port = int(port)
-
-        self.base_url = "%s://%s:%d" % (protocol, host, port)
+        self.host = self.device_info['host']
+        self.port = int(port)
+        self.base_url = "%s://%s:%d" % (self.protocol, self.host, self.port)
 
     def axapi_http(self, method, api_url, params={}):
-        if self.force_tlsv1:
-            http = urllib3.PoolManager(ssl_version=ssl.PROTOCOL_TLSv1,
-                                       cert_reqs='CERT_NONE',
-                                       assert_hostname=False)
+        if self.protocol == 'https':
+            http = httplib.HTTPSConnection(self.host, self.port)
+            http.connect = lambda: force_tlsv1_connect(http)
         else:
-            http = urllib3.PoolManager()
+            http = httplib.HTTPConnection(self.host, self.port)
 
         headers = {
             "Content-Type": "application/json",
@@ -103,16 +110,17 @@ class A10Client():
         else:
             payload = None
 
-        r = http.urlopen(method, url, body=payload, headers=headers)
+        http.request(method, api_url, payload, headers)
+        data = http.getresponse().read()
 
-        LOG.debug("axapi_http: data = %s", r.data)
+        LOG.debug("axapi_http: data = %s", data)
 
         xmlok = ('<?xml version="1.0" encoding="utf-8" ?>'
                  '<response status="ok"></response>')
-        if r.data == xmlok:
+        if data == xmlok:
             return {'response': {'status': 'OK'}}
 
-        return json.loads(r.data)
+        return json.loads(data)
 
     def get_session_id(self):
         auth_url = "/services/rest/v2.1/?format=json&method=authenticate"

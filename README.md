@@ -50,12 +50,11 @@ Move the directories and files to the appropriate locations.
 NEUTRON_IMPORT=` printf "import neutron\nprint neutron.__file__\n" | python`
 NEUTRON_DIR=`dirname $NEUTRON_IMPORT`
 if [ -z “$NEUTRON_DIR” ]; then
-echo “ERROR: neutron is not installed”
+  echo “ERROR: neutron is not installed”
 else
-git clone https://github.com/a10networks/a10_lbaas_driver
-cd a10_lbaas_driver/neutron/neutron/services/loadbalancer/drivers
-sudo cp -r a10networks/ $neutron_dir/services/loadbalancer/drivers/
-cd –
+  cd neutron/neutron/services/loadbalancer/drivers
+  sudo cp -r a10networks/ $NEUTRON_DIR/services/loadbalancer/drivers/
+  cd - >/dev/null
 fi
 ```
 
