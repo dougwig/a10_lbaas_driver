@@ -15,8 +15,7 @@ if [ -z “$NEUTRON_DIR” ]; then
 else
   echo "Installing neutron driver into $NEUTRON_DIR"
   cd neutron/neutron/services/loadbalancer/drivers
-  sudo mkdir -p $neutron_dir/services/loadbalancer/drivers/
-  sudo cp -r a10networks/ $neutron_dir/services/loadbalancer/drivers/
+  sudo cp -r a10networks/ $NEUTRON_DIR/services/loadbalancer/drivers/
   cd - >/dev/null
 fi
 
