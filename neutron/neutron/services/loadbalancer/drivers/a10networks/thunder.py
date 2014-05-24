@@ -28,7 +28,8 @@ VERSION = "0.3.1"
 LOG = logging.getLogger(__name__)
 
 
-class ThunderDriver(abstract_driver.LoadBalancerAbstractDriver):
+#class ThunderDriver(abstract_driver.LoadBalancerAbstractDriver):
+class ThunderDriver(object):
 
     def __init__(self, plugin):
         LOG.info("A10Driver: init version=%s", VERSION)
