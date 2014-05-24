@@ -14,9 +14,15 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
+import ConfigParser
+import json
 import logging
 import os
 import sys
+
+import a10_exceptions as a10_ex
+
+config_dir = "/etc/neutron/services/loadbalancer/a10networks"
 
 
 LOG = logging.getLogger(__name__)
@@ -25,17 +31,50 @@ LOG = logging.getLogger(__name__)
 class A10Config(object):
 
     def __init__(self):
-        config_dir = "/etc/neutron/services/loadbalancer/a10networks"
         config_path = os.path.join(config_dir, "config.py")
         real_sys_path = sys.path
         sys.path = [config_dir]
+        try_ini = False
         try:
             import config
+            self.config = config
+            self.devices = self.config.devices
         except ImportError, e:
-            LOG.error("A10Driver: missing config file at: %s", config_path)
-            raise e
+            try_ini = True
         finally:
             sys.path = real_sys_path
-        self.config = config
-        self.devices = self.config.devices
+        if try_ini:
+            try:
+                self._parse_old_style_ini()
+            except Exception, e:
+                LOG.error("A10Driver: missing config file at: %s", config_path)
+                raise a10_ex.A10ThunderException()
         LOG.debug("A10Config, devices=%s", self.devices)
+
+    def _parse_old_style_ini(self):
+        ini_path = os.path.join(config_dir, 'a10networks_config.ini')
+        self.config = ConfigParser.ConfigParser()
+        self.config.read(ini_path)
+        self._get_devices()
+
+    def _get_devices(self):
+        self.devices = {}
+
+        for key, j in self.config.items('a10networks'):
+            h = json.loads(j.replace("\n", "", len(key)))
+
+            if 'True' in h['autosnat']:
+                h['autosnat'] = True
+            if 'True' in h['use_float']:
+                h['use_float'] = True
+
+            status = False
+            if 'status' in h:
+                s = str(h['status'])
+                if s[0].upper() == 'T' or s[0] == '1':
+                    status = True
+            else:
+                status = True
+
+            if status:
+                self.devices[key] = h
