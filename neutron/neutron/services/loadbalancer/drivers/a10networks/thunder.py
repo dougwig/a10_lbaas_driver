@@ -28,7 +28,7 @@ from neutron.services.loadbalancer.drivers.a10networks import (
 from neutron.services.loadbalancer.drivers.a10networks import a10_config
 from neutron.services.loadbalancer.drivers.a10networks import acos_client
 
-VERSION = "0.3.1"
+VERSION = "0.3.2"
 LOG = logging.getLogger(__name__)
 
 
