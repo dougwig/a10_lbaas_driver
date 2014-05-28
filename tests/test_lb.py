@@ -1,6 +1,5 @@
 
 import os
-import pytest
 import re
 import requests
 import subprocess
@@ -33,16 +32,16 @@ class NeutronLB(object):
         return uuid.uuid4().hex[0:12]
 
     def _neutron(self, cmd):
-        print "NEUTRON: ", cmd
+        print("NEUTRON: ", cmd)
         z = subprocess.check_output(["neutron"] + cmd)
-        print "result:\n", z
+        print("result:\n", z)
         return z
 
     def _wait_for_completion(self, cmd):
         start = time.time()
         now = start
         r = ''
-        while ((now-start) < 10):
+        while ((now - start) < 10):
             r = self._neutron(cmd)
             if find(r, "(PENDING)") != "PENDING":
                 break
@@ -83,9 +82,9 @@ class NeutronLB(object):
             else:
                 a.append("type=%s" % persistence)
         r = self._neutron(a)
-        port_id = find(r, "^\| port_id.*\| ([^\s]+)")
+        #port_id = find(r, "^\| port_id.*\| ([^\s]+)")
         self.vip_ip = find(r, "^\| address.*\| ([^\s]+)")
-        print "INTERNAL VIP_IP ", self.vip_ip
+        print("INTERNAL VIP_IP ", self.vip_ip)
         self._wait_for_completion(['lb-vip-show', self.vip_name])
 
     def vip_destroy(self):
@@ -121,8 +120,8 @@ class NeutronLB(object):
         assert r.strip() == "Associated health monitor %s" % self.monitor_id
 
     def monitor_disassociate(self):
-        r = self._neutron(['lb-healthmonitor-disassociate', self.monitor_id,
-                           self.pool_name])
+        self._neutron(['lb-healthmonitor-disassociate', self.monitor_id,
+                       self.pool_name])
 
     def destroy(self):
         self.monitor_disassociate()
@@ -192,7 +191,7 @@ class AxSSH(object):
         f = open('/tmp/axcfg.out.%s' % os.environ['USER'], 'w')
         f.write(s)
         f.close()
-        # TODO assert self.config_get_template(name) == s
+        # TODO(dougw) assert self.config_get_template(name) == s
 
 
 def verify_ax(template_name='base'):
@@ -233,9 +232,9 @@ def pull_data(url_base, vip_ip):
     for ip in member_list:
         members[ip] = requests.get("http://%s/" % ip).text
 
-    print "LB URL ", "%s%s/" % (url_base, vip_ip)
+    print("LB URL ", "%s%s/" % (url_base, vip_ip))
     lb_data = requests.get("%s%s/" % (url_base, vip_ip)).text
-    print "DATA LB ++%s++" % lb_data
+    print("DATA LB ++%s++" % lb_data)
 
     matching_data = False
     for ip, data in members.items():

@@ -18,16 +18,21 @@ from neutron.db import l3_db
 from neutron.db.loadbalancer import loadbalancer_db as lb_db
 from neutron.openstack.common import log as logging
 from neutron.plugins.common import constants
-from neutron.services.loadbalancer.drivers import abstract_driver
 
-import a10_config
-import a10_exceptions as a10_ex
-import acos_client
+# TODO(dougw) - not inheriting; causes issues with Havana
+#from neutron.services.loadbalancer.drivers import abstract_driver
+
+from neutron.services.loadbalancer.drivers.a10networks import (
+    a10_exceptions as a10_ex
+)
+from neutron.services.loadbalancer.drivers.a10networks import a10_config
+from neutron.services.loadbalancer.drivers.a10networks import acos_client
 
 VERSION = "0.3.1"
 LOG = logging.getLogger(__name__)
 
 
+# TODO(dougw) - not inheriting; causes issues with Havana
 #class ThunderDriver(abstract_driver.LoadBalancerAbstractDriver):
 class ThunderDriver(object):
 
@@ -60,7 +65,7 @@ class ThunderDriver(object):
             if a10.persistence_exists(persist_type, name):
                 return name
             a10.persistence_create(persist_type, name)
-        except:
+        except Exception:
             raise a10_ex.TemplateCreateError(template=name)
 
         return name
@@ -94,7 +99,7 @@ class ThunderDriver(object):
                                       s_pers, c_pers, status)
             self._active(context, lb_db.Vip, vip['id'])
 
-        except:
+        except Exception:
             self._failed(context, lb_db.Vip, vip['id'])
             raise a10_ex.VipCreateError(vip=vip['id'])
 
@@ -105,10 +110,10 @@ class ThunderDriver(object):
         try:
             a10.virtual_port_update(vip['id'], vip['protocol'],
                                     vip['pool_id'],
-                                    spers, cpers, status)
+                                    s_pers, c_pers, status)
             self._active(context, lb_db.Vip, vip['id'])
 
-        except:
+        except Exception:
             self._failed(context, lb_db.Vip, vip['id'])
             raise a10_ex.VipUpdateError(vip=vip['id'])
 
@@ -118,13 +123,13 @@ class ThunderDriver(object):
             if vip['session_persistence'] is not None:
                 a10.persistence_delete(vip['session_persistence']['type'],
                                        vip['id'])
-        except:
+        except Exception:
             pass
 
         try:
             a10.virtual_server_delete(vip['id'])
             self.plugin._delete_db_vip(context, vip['id'])
-        except:
+        except Exception:
             self._failed(context, lb_db.Vip, vip['id'])
             raise a10_ex.VipDeleteError(vip=vip['id'])
 
@@ -140,7 +145,7 @@ class ThunderDriver(object):
 
             a10.service_group_create(pool['id'], lb_method)
             self._active(context, lb_db.Pool, pool['id'])
-        except:
+        except Exception:
             self._failed(context, lb_db.Pool, pool['id'])
             raise a10_ex.SgCreateError(sg=pool['id'])
 
@@ -156,7 +161,7 @@ class ThunderDriver(object):
 
             a10.service_group_update(pool['id'], lb_method)
             self._active(context, lb_db.Pool, pool['id'])
-        except:
+        except Exception:
             self._failed(context, lb_db.Pool, pool['id'])
             raise a10_ex.SgUpdateError(sg=pool['id'])
 
@@ -178,7 +183,7 @@ class ThunderDriver(object):
             removed_a10 = True
             self.plugin._delete_db_pool(context, pool['id'])
 
-        except:
+        except Exception:
             if removed_a10:
                 raise a10_ex.SgDeleteError(sg="SG was REMOVED from ACOS "
                                            "entity but cloud not be removed "
@@ -195,7 +200,7 @@ class ThunderDriver(object):
                 if n == 0:
                     try:
                         a10.partition_delete(tenant_id=pool['tenant_id'])
-                    except:
+                    except Exception:
                         raise a10_ex.ParitionDeleteError(
                             partition=pool['tenant_id'][0:13])
 
@@ -211,7 +216,7 @@ class ThunderDriver(object):
                 "active_connections": r["virtual_server_stat"]["cur_conns"],
                 "total_connections": r["virtual_server_stat"]["tot_conns"]
             }
-        except:
+        except Exception:
             s = {
                 "bytes_in": 0,
                 "bytes_out": 0,
@@ -245,7 +250,7 @@ class ThunderDriver(object):
         try:
             if 'server' not in a10.server_get(server_name):
                 a10.server_create(server_name, ip_address)
-        except:
+        except Exception:
             self._failed(context, lb_db.Member, member["id"])
             raise a10_ex.MemberCreateError(member=server_name)
 
@@ -257,7 +262,7 @@ class ThunderDriver(object):
             a10.member_create(member['pool_id'], server_name,
                               member['protocol_port'], status)
             self._active(context, lb_db.Member, member["id"])
-        except:
+        except Exception:
             self._failed(context, lb_db.Member, member["id"])
             raise a10_ex.MemberCreateError(member=server_name)
 
@@ -275,7 +280,7 @@ class ThunderDriver(object):
             a10.member_update(member['pool_id'], server_name,
                               member['protocol_port'], status)
             self._active(context, lb_db.Member, member["id"])
-        except:
+        except Exception:
             self._failed(context, lb_db.Member, member["id"])
             raise a10_ex.MemberUpdateError(member=server_name)
 
@@ -297,7 +302,7 @@ class ThunderDriver(object):
             else:
                 a10.server_delete(server_name)
                 self.plugin._delete_db_member(context, member['id'])
-        except:
+        except Exception:
             self._failed(context, lb_db.Member, member["id"])
             raise a10_ex.MemberDeleteError(member=member["id"])
 
@@ -320,7 +325,7 @@ class ThunderDriver(object):
                                                    pool_id,
                                                    constants.ACTIVE)
 
-        except:
+        except Exception:
             raise a10_ex.HealthMonitorUpdateError(hm=hm_name)
 
     def create_pool_health_monitor(self, context, health_monitor, pool_id):
@@ -343,7 +348,7 @@ class ThunderDriver(object):
                                                    health_monitor["id"],
                                                    pool_id,
                                                    constants.ACTIVE)
-        except:
+        except Exception:
             self.plugin.update_pool_health_monitor(context,
                                                    health_monitor["id"],
                                                    pool_id,
@@ -368,7 +373,7 @@ class ThunderDriver(object):
             self.plugin._delete_db_pool_health_monitor(context,
                                                        health_monitor['id'],
                                                        pool_id)
-        except:
+        except Exception:
             self.plugin.update_pool_health_monitor(context,
                                                    health_monitor["id"],
                                                    pool_id,

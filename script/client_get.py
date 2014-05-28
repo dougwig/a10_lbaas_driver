@@ -10,4 +10,4 @@ info_url = ("/services/rest/v2.1/?format=json&session_id=%s"
 
 r = a.axapi_http("GET", info_url)
 
-print r
+print(r)
