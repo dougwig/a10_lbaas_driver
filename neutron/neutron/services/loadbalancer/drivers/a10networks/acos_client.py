@@ -26,11 +26,15 @@ import socket
 import ssl
 import traceback
 
-import request_struct_v2
-import a10_exceptions as a10_ex
-
-from ConfigParser import ConfigParser
 from neutron.openstack.common import log as logging
+
+from neutron.services.loadbalancer.drivers.a10networks import (
+    a10_exceptions as a10_ex
+)
+from neutron.services.loadbalancer.drivers.a10networks import (
+    request_struct_v2
+)
+
 
 # Neutron logs
 LOG = logging.getLogger(__name__)
@@ -62,8 +66,8 @@ class A10Client():
         self.session_id = None
         self.get_session_id()
         if self.session_id is None:
-            msg = _("A10Client: unable to get session_id from ax")
-            LOG.error(msg)
+            message = _("A10Client: unable to get session_id from ax")
+            LOG.error(message)
             raise a10_ex.A10ThunderNoSession()
 
         if version_check:
@@ -104,7 +108,6 @@ class A10Client():
         LOG.debug("axapi_http: url = %s", api_url)
         LOG.debug("axapi_http: params = %s", params)
 
-        url = self.base_url + api_url
         if params:
             payload = json.dumps(params, encoding='utf-8')
         else:
@@ -133,7 +136,7 @@ class A10Client():
             r = self.axapi_http("POST", auth_url, params)
             self.session_id = r['session_id']
 
-        except Exception, e:
+        except Exception as e:
             tlsv1_error = "SSL23_GET_SERVER_HELLO:tlsv1 alert protocol version"
             if self.force_tlsv1 is False and str(e).find(tlsv1_error) >= 0:
                 # workaround ssl version
@@ -173,22 +176,22 @@ class A10Client():
                 if p_search is True:
                     try:
                         self.partition_active(tenant_id=tenant_id)
-                    except:
+                    except Exception:
                         raise a10_ex.PartitionActiveError(
                             partition=tenant_id[0:13])
                 else:
                     try:
                         self.partition_create(tenant_id=tenant_id)
-                    except:
+                    except Exception:
                         raise a10_ex.PartitionCreateError(
                             partition=tenant_id[0:13])
                     finally:
                         try:
                             self.partition_active(tenant_id=tenant_id)
-                        except:
+                        except Exception:
                             raise a10_ex.PartitionActiveError(
                                 partition=tenant_id[0:13])
-            except:
+            except Exception:
                 raise a10_ex.SearchError(term="Partition Discovery for %s"
                                          % tenant_id[0:13])
 
@@ -499,11 +502,11 @@ class A10Client():
         return r
 
     def virtual_port_update(self, name, protocol, service_group_id,
-                            source_ip_persistence_template=None,
-                            cookie_persistence_template=None,
+                            s_pers=None,
+                            c_pers=None,
                             status=1):
-        vport_name = vip['id'] + "_VPORT"
-        if vip['protocol'] is "HTTP":
+        vport_name = name + "_VPORT"
+        if protocol is "HTTP":
             vport_update_req = (request_struct_v2.vport_HTTP_obj.call.update
                                 .toDict().items())
         else:
@@ -511,15 +514,15 @@ class A10Client():
                                 .toDict().items())
 
         # First, grab the current port config
-        vport_res = self.virtual_port_get(name, protocol)
+        vport_res = self.virtual_port_get(vport_name, protocol)
         if 'virtual_service' not in vport_res:
             raise a10_ex.SearchError(term="vPort Object %s" % name)
 
         # Now apply the changes
         if s_pers is not None:
-            vport_obj['source_ip_persistence_template'] = s_pers
+            vport_res['source_ip_persistence_template'] = s_pers
         elif c_pers is not None:
-            vport_obj['cookie_persistence_template'] = c_pers
+            vport_res['cookie_persistence_template'] = c_pers
 
         vport_res['service_group'] = service_group_id
         vport_res['status'] = status

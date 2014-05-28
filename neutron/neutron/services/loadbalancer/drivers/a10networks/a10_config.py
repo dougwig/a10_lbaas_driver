@@ -20,7 +20,7 @@ import logging
 import os
 import sys
 
-import a10_exceptions as a10_ex
+from neutron.services.loadbalancer.drivers.a10networks import a10_exceptions
 
 config_dir = "/etc/neutron/services/loadbalancer/a10networks"
 
@@ -39,16 +39,16 @@ class A10Config(object):
             import config
             self.config = config
             self.devices = self.config.devices
-        except ImportError, e:
+        except ImportError:
             try_ini = True
         finally:
             sys.path = real_sys_path
         if try_ini:
             try:
                 self._parse_old_style_ini()
-            except Exception, e:
+            except Exception:
                 LOG.error("A10Driver: missing config file at: %s", config_path)
-                raise a10_ex.A10ThunderException()
+                raise a10_exceptions.A10ThunderException()
         LOG.debug("A10Config, devices=%s", self.devices)
 
     def _parse_old_style_ini(self):
