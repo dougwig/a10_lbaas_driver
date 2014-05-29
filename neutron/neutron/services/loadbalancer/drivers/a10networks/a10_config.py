@@ -38,7 +38,12 @@ class A10Config(object):
         try:
             import config
             self.config = config
-            self.devices = self.config.devices
+            self.devices = {}
+            for k, v in self.config.devices.items():
+                if v['status']:
+                    self.devices[k] = v
+                else:
+                    LOG.debug("status is False, skipping dev: %s", v)
         except ImportError:
             try_ini = True
         finally:
@@ -78,3 +83,5 @@ class A10Config(object):
 
             if status:
                 self.devices[key] = h
+            else:
+                LOG.debug("status is False, skipping dev: %s", h)
