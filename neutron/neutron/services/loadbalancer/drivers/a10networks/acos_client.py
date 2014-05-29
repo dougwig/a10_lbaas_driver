@@ -55,7 +55,6 @@ class A10Client():
                  version_check=False):
         self.config = config
         self.tenant_id = tenant_id
-
         self.device_info = dev_info or self.select_device(tenant_id=tenant_id)
         self.set_base_url()
 
@@ -291,6 +290,9 @@ class A10Client():
                          close_session_after_request=False)
 
     def select_device(self, tenant_id=""):
+        if len(self.config.devices) == 0:
+            raise a10_ex.A10ThunderNoDevices()
+
         nodes = 256
         # node_prefix = "a10"
         node_list = []

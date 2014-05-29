@@ -36,6 +36,10 @@ class A10ThunderNoSession(A10BaseException):
     message = _('Unable to get session id from appliance')
 
 
+class A10ThunderNoDevices(A10BaseException):
+    message = _('No configured and active devices')
+
+
 class A10ThunderVersionMismatch(A10BaseException):
     message = _("A10Client: driver requires ACOS version 2.7.2+")
 

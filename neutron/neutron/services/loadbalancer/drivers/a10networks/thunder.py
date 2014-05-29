@@ -44,6 +44,10 @@ class ThunderDriver(object):
 
     def _verify_appliances(self):
         LOG.info("A10Driver: verifying appliances")
+
+        if len(self.config.devices) == 0:
+            raise a10_ex.A10ThunderNoDevices()
+
         for k, v in self.config.devices.items():
             acos_client.A10Client(self.config, dev_info=v,
                                   version_check=True)
