@@ -18,10 +18,6 @@ from neutron.db import l3_db
 from neutron.db.loadbalancer import loadbalancer_db as lb_db
 from neutron.openstack.common import log as logging
 from neutron.plugins.common import constants
-
-# TODO(dougw) - not inheriting; causes issues with Havana
-#from neutron.services.loadbalancer.drivers import abstract_driver
-
 from neutron.services.loadbalancer.drivers.a10networks import (
     a10_exceptions as a10_ex
 )
@@ -33,7 +29,8 @@ LOG = logging.getLogger(__name__)
 
 
 # TODO(dougw) - not inheriting; causes issues with Havana
-#class ThunderDriver(abstract_driver.LoadBalancerAbstractDriver):
+# from neutron.services.loadbalancer.drivers import abstract_driver
+# class ThunderDriver(abstract_driver.LoadBalancerAbstractDriver):
 class ThunderDriver(object):
 
     def __init__(self, plugin):

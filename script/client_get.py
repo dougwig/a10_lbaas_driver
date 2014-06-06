@@ -1,7 +1,10 @@
 #!/usr/bin/env python
 
-import neutron.services.loadbalancer.drivers.a10networks.acos_client \
-    as acos_client
+import sys
+
+sys.path.insert(0, "./neutron/neutron/services/loadbalancer/drivers")
+
+from a10networks import acos_client
 
 a = acos_client.A10Client()
 
