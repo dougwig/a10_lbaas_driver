@@ -3,6 +3,6 @@
 set -e
 set -x
 
-#env
+flake8 neutron/
 
 exit 0
