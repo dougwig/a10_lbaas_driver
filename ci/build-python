@@ -7,17 +7,6 @@ set -x
 # PEP8/Openstack style check
 #
 
-d=$(date +%d)
-if [ -f /tmp/ci-last-day ]; then
-    z=$(cat /tmp/ci-last-day)
-else
-    z=""
-fi
-if [ "$z" != "$d" ]; then
-    pip install -U hacking
-    echo -n "$d" > /tmp/ci-last-day
-fi
-
 flake8 neutron/
 
 exit 0
