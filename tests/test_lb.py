@@ -1,13 +1,13 @@
 
 import os
 import re
-import requests
 import subprocess
 import tempfile
 import time
 import uuid
 
 import local_env as e
+import requests
 
 
 def find(str, regex):
@@ -82,7 +82,7 @@ class NeutronLB(object):
             else:
                 a.append("type=%s" % persistence)
         r = self._neutron(a)
-        #port_id = find(r, "^\| port_id.*\| ([^\s]+)")
+        # port_id = find(r, "^\| port_id.*\| ([^\s]+)")
         self.vip_ip = find(r, "^\| address.*\| ([^\s]+)")
         print("INTERNAL VIP_IP ", self.vip_ip)
         self._wait_for_completion(['lb-vip-show', self.vip_name])

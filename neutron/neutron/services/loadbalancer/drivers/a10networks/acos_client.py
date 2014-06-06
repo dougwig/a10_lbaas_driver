@@ -27,7 +27,6 @@ import ssl
 import traceback
 
 from neutron.openstack.common import log as logging
-
 from neutron.services.loadbalancer.drivers.a10networks import (
     a10_exceptions as a10_ex
 )
