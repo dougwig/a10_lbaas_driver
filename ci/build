@@ -1,8 +1,12 @@
 #!/bin/bash
 
-set -e
-set -x
+label=$(echo $JOB_NAME | perl -ne '/label=(.*)$/ && print "$1";')
+sub="${0}-${label}"
 
-#env
+if [ ! -x "$sub" ]; then
+    echo "ERROR: missing sub-build script: $sub"
+    exit 1
+fi
 
-exit 0
+$sub $*
+exit $?
