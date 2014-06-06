@@ -43,11 +43,15 @@ class ThunderDriver(object):
         LOG.info("A10Driver: verifying appliances")
 
         if len(self.config.devices) == 0:
-            raise a10_ex.A10ThunderNoDevices()
+            LOG.error(_("A10Driver: no configured appliances"))
 
         for k, v in self.config.devices.items():
-            acos_client.A10Client(self.config, dev_info=v,
-                                  version_check=True)
+            try:
+                acos_client.A10Client(self.config, dev_info=v,
+                                      version_check=True)
+            except a10_ex.A10BaseException:
+                LOG.error(_("A10Driver: unable to connect to configured"
+                            "appliance, name=%s"), v['name'])
 
     def _device_context(self, tenant_id=""):
         return acos_client.A10Client(self.config, tenant_id=tenant_id)
