@@ -83,6 +83,7 @@ class NeutronLB(object):
                 a.append("type=%s" % persistence)
         r = self._neutron(a)
         # port_id = find(r, "^\| port_id.*\| ([^\s]+)")
+        self.vip_id = find(r, "^\| id.*\| ([^\s]+)")
         self.vip_ip = find(r, "^\| address.*\| ([^\s]+)")
         print("INTERNAL VIP_IP ", self.vip_ip)
         self._wait_for_completion(['lb-vip-show', self.vip_name])
@@ -159,14 +160,16 @@ class AxSSH(object):
 
         return lines[4:-3]
 
-    def config_get(self):
+    def config_get(self, acos_commands):
         commands = ['en\r\n',
                     '\r\n',
-                    'terminal length 0\r\n',
-                    'show run\r\n',
-                    'exit\r\n',
-                    'exit\r\n',
-                    'y\r\n']
+                    'terminal length 0\r\n']
+        commands += acos_commands
+        commands += ['exit\r\n',
+                     'exit\r\n',
+                     'y\r\n']
+
+        print("commands = ", commands)
 
         lines = self._ssh(commands)
         trim = []
@@ -177,8 +180,11 @@ class AxSSH(object):
             trim.append(line)
         return trim
 
-    def config_gets(self):
-        return ''.join(self.config_get())
+    def config_gets(self, commands):
+        #return ''.join(self.config_get(commands))
+        x = ''.join(self.config_get(commands))
+        print("result = ", x)
+        return x
 
     def config_get_template(self, name):
         f = open("tests/conf/%s.config" % name)
@@ -187,16 +193,57 @@ class AxSSH(object):
         return z
 
     def config_get_and_compare_to_template(self, name):
-        s = self.config_gets()
+        s = self.config_gets(['show run\r\n'])
         f = open('/tmp/axcfg.out.%s' % os.environ['USER'], 'w')
         f.write(s)
         f.close()
         # TODO(dougw) assert self.config_get_template(name) == s
 
+    def check_and_add_test_cert(self, vip_name, protocol, port):
+        z = self.config_gets(['show slb ssl cert end_to_end_test_cert\r\n'])
+        if 'No such' in z:
+            commands = ['config\r\n',
+                        'slb ssl-create certificate end_to_end_test_cert\r\n',
+                        '\r\n',
+                        '*\r\n',
+                        '\r\n',
+                        '\r\n',
+                        '\r\n',
+                        '\r\n',
+                        'US\r\n',
+                        '\r\n',
+                        '\r\n',
+                        'exit\r\n']
+            self.config_gets(commands)
+
+        z = self.config_gets(['show slb template client-ssl cssl_ete\r\n'])
+        if not 'cssl_ete' in z:
+            commands = ['config\r\n',
+                        'slb template client-ssl cssl_ete\r\n',
+                        'cert end_to_end_test_cert\r\n',
+                        'key end_to_end_test_cert\r\n',
+                        'exit\r\n',
+                        'exit\r\n']
+            self.config_gets(commands)
+
+        commands = ['config\r\n',
+                    'slb virtual-server %s\r\n' % vip_name,
+                    'port %d %s\r\n' % (port, protocol),
+                    'template client-ssl cssl_ete\r\n',
+                    'exit\r\n',
+                    'exit\r\n',
+                    'exit\r\n']
+        self.config_gets(commands)
+
 
 def verify_ax(template_name='base'):
     ax = AxSSH(e.AX21_HOST, e.AX21_USERNAME, e.AX21_PASSWORD)
     ax.config_get_and_compare_to_template('base')
+
+
+def ax_add_ssl_cert(vip_name, protocol, port):
+    ax = AxSSH(e.AX21_HOST, e.AX21_USERNAME, e.AX21_PASSWORD)
+    ax.check_and_add_test_cert(vip_name, protocol, port)
 
 
 #
@@ -225,7 +272,11 @@ def setup_lb(lb_method, protocol, persistence):
     else:
         print("ERROR: protocol=%s", protocol)
         raise "how did we get here?"
+
     lb.vip_create(port=port, protocol=protocol, persistence=persistence)
+
+    if port == 443:
+        ax_add_ssl_cert(lb.vip_id, protocol.lower(), port)
 
     member_list = [e.MEMBER1_IP, e.MEMBER2_IP]
     for ip in member_list:
@@ -244,7 +295,7 @@ def pull_data(url_base, vip_ip):
 
     url = url_base % vip_ip
     print("LB URL %s", url)
-    lb_data = requests.get(url).text
+    lb_data = requests.get(url, verify=False).text
     print("DATA LB ++%s++" % lb_data)
 
     matching_data = False
@@ -270,7 +321,7 @@ def end_to_end(lb_method, protocol, persistence, url_base):
     pull_data(url_base, lb.vip_ip)
 
     # Whoa, all done, success.
-#    lb.destroy()
+    lb.destroy()
 
     # method: None, ROUND_ROBIN, LEAST_CONNECTIONS, SOURCE_IP
     # protocol: HTTP, HTTPS, TCP
@@ -278,14 +329,15 @@ def end_to_end(lb_method, protocol, persistence, url_base):
     # persistence: None, HTTP_COOKIE, SOURCE_IP, APP_COOKIE
 
 # def test_https():
-#     end_to_end('SOURCE_IP', 'HTTPS', 'SOURCE_IP', 'https://')
+#     end_to_end('SOURCE_IP', 'HTTPS', 'SOURCE_IP', 'https://%s/')
+
 
 # def test_lb():
-#     end_to_end('ROUND_ROBIN', 'HTTP', None, 'http://')
+#     end_to_end('ROUND_ROBIN', 'HTTP', None, 'http://%s/')
 
 
 # def test_alt_lb():
-#     end_to_end('LEAST_CONNECTIONS', 'HTTP', 'HTTP_COOKIE', 'http://')
+#     end_to_end('LEAST_CONNECTIONS', 'HTTP', 'HTTP_COOKIE', 'http://%s/')
 
 
 def test_lb_matrix():
