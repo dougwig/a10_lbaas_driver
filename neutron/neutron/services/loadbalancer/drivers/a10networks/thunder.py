@@ -146,7 +146,7 @@ class ThunderDriver(object):
             elif pool['lb_method'] == "LEAST_CONNECTIONS":
                 lb_method = "2"
             else:
-                lb_method = "3"
+                lb_method = "9"
 
             a10.service_group_create(pool['id'], lb_method)
             self._active(context, lb_db.Pool, pool['id'])
