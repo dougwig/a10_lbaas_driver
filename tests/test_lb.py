@@ -215,7 +215,17 @@ def verify_ax(template_name='base'):
 
 def setup_lb(lb_method, protocol, persistence):
     lb = NeutronLB(lb_method=lb_method, protocol=protocol)
-    lb.vip_create(protocol=protocol, persistence=persistence)
+
+    if protocol == 'HTTP':
+        port = 80
+    elif protocol == 'HTTPS':
+        port = 443
+    elif protocol == 'TCP':
+        port = 4040
+    else:
+        print("ERROR: protocol=%s", protocol)
+        raise "how did we get here?"
+    lb.vip_create(port=port, protocol=protocol, persistence=persistence)
 
     member_list = [e.MEMBER1_IP, e.MEMBER2_IP]
     for ip in member_list:
@@ -232,8 +242,9 @@ def pull_data(url_base, vip_ip):
     for ip in member_list:
         members[ip] = requests.get("http://%s/" % ip).text
 
-    print("LB URL ", "%s%s/" % (url_base, vip_ip))
-    lb_data = requests.get("%s%s/" % (url_base, vip_ip)).text
+    url = url_base % vip_ip
+    print("LB URL %s", url)
+    lb_data = requests.get(url).text
     print("DATA LB ++%s++" % lb_data)
 
     matching_data = False
@@ -259,27 +270,29 @@ def end_to_end(lb_method, protocol, persistence, url_base):
     pull_data(url_base, lb.vip_ip)
 
     # Whoa, all done, success.
-    lb.destroy()
+#    lb.destroy()
 
     # method: None, ROUND_ROBIN, LEAST_CONNECTIONS, SOURCE_IP
     # protocol: HTTP, HTTPS, TCP
     # protocol: TCP, HTTP, HTTPS
     # persistence: None, HTTP_COOKIE, SOURCE_IP, APP_COOKIE
 
+# def test_https():
+#     end_to_end('SOURCE_IP', 'HTTPS', 'SOURCE_IP', 'https://')
 
-def test_lb():
-    end_to_end('ROUND_ROBIN', 'HTTP', None, 'http://')
+# def test_lb():
+#     end_to_end('ROUND_ROBIN', 'HTTP', None, 'http://')
 
 
-def test_alt_lb():
-    end_to_end('LEAST_CONNECTIONS', 'HTTP', 'HTTP_COOKIE', 'http://')
+# def test_alt_lb():
+#     end_to_end('LEAST_CONNECTIONS', 'HTTP', 'HTTP_COOKIE', 'http://')
 
 
 def test_lb_matrix():
     protocols = [
-        ('HTTP', 'http://'),
-        ('TCP', 'http://'),
-        ('HTTPS', 'https://')
+        ('HTTP', 'http://%s/'),
+        ('TCP', 'http://%s:4040/'),
+        ('HTTPS', 'https://%s/')
     ]
     methods = ['ROUND_ROBIN', 'LEAST_CONNECTIONS', 'SOURCE_IP']
     persists = [None, 'HTTP_COOKIE', 'SOURCE_IP']
