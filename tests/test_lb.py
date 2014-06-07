@@ -169,8 +169,6 @@ class AxSSH(object):
                      'exit\r\n',
                      'y\r\n']
 
-        print("commands = ", commands)
-
         lines = self._ssh(commands)
         trim = []
         for line in lines:
@@ -181,10 +179,7 @@ class AxSSH(object):
         return trim
 
     def config_gets(self, commands):
-        #return ''.join(self.config_get(commands))
-        x = ''.join(self.config_get(commands))
-        print("result = ", x)
-        return x
+        return ''.join(self.config_get(commands))
 
     def config_get_template(self, name):
         f = open("tests/conf/%s.config" % name)
@@ -328,12 +323,12 @@ def end_to_end(lb_method, protocol, persistence, url_base):
     # protocol: TCP, HTTP, HTTPS
     # persistence: None, HTTP_COOKIE, SOURCE_IP, APP_COOKIE
 
+def test_lb():
+    end_to_end('ROUND_ROBIN', 'HTTP', None, 'http://%s/')
+
+
 # def test_https():
 #     end_to_end('SOURCE_IP', 'HTTPS', 'SOURCE_IP', 'https://%s/')
-
-
-# def test_lb():
-#     end_to_end('ROUND_ROBIN', 'HTTP', None, 'http://%s/')
 
 
 # def test_alt_lb():
