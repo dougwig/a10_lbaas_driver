@@ -458,6 +458,8 @@ class A10Client():
 
         if protocol == "HTTP":
             vport_obj = request_struct_v2.vport_HTTP_obj.ds.toDict()
+        elif protocol == "HTTPS":
+            vport_obj = request_struct_v2.vport_HTTPS_obj.ds.toDict()
         else:
             vport_obj = request_struct_v2.vport_TCP_obj.ds.toDict()
 
@@ -492,6 +494,9 @@ class A10Client():
         if protocol is "HTTP":
             vport_obj_req = (request_struct_v2.vport_HTTP_obj.call.search
                              .toDict().items())
+        elif protocol is "HTTPS":
+            vport_obj_req = (request_struct_v2.vport_HTTPS_obj.call.search
+                             .toDict().items())
         else:
             vport_obj_req = (request_struct_v2.vport_TCP_obj.call
                              .search.toDict().items())
@@ -509,6 +514,9 @@ class A10Client():
         vport_name = name + "_VPORT"
         if protocol is "HTTP":
             vport_update_req = (request_struct_v2.vport_HTTP_obj.call.update
+                                .toDict().items())
+        elif protocol is "HTTPS":
+            vport_update_req = (request_struct_v2.vport_HTTPS_obj.call.update
                                 .toDict().items())
         else:
             vport_update_req = (request_struct_v2.vport_TCP_obj.call.update
