@@ -1,6 +1,4 @@
-# vim: tabstop=4 shiftwidth=4 softtabstop=4
-
-# Copyright 2013,  Mike Thompson,  A10 Networks.
+# Copyright 2014,  Dogu Wiegley,  A10 Networks.
 #
 #    Licensed under the Apache License, Version 2.0 (the "License"); you may
 #    not use this file except in compliance with the License. You may obtain
@@ -14,137 +12,137 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
-import sys
+# import sys
 
-from neutron.common import exceptions
-from neutron.openstack.common import log as logging
+# from neutron.common import exceptions
+# from neutron.openstack.common import log as logging
 
-LOG = logging.getLogger(__name__)
-
-
-class A10BaseException(exceptions.NeutronException):
-    def __init__(self, **kwargs):
-        LOG.debug("A10BaseException", exc_info=sys.exc_info())
-        super(A10BaseException, self).__init__(**kwargs)
+# LOG = logging.getLogger(__name__)
 
 
-class A10ThunderException(A10BaseException):
-    message = _('An unknown exception occurred in A10LBaaS provider.')
+# class A10BaseException(exceptions.NeutronException):
+#     def __init__(self, **kwargs):
+#         LOG.debug("A10BaseException", exc_info=sys.exc_info())
+#         super(A10BaseException, self).__init__(**kwargs)
 
 
-class A10ThunderNoSession(A10BaseException):
-    message = _('Unable to get session id from appliance')
+# class A10ThunderException(A10BaseException):
+#     message = _('An unknown exception occurred in A10LBaaS provider.')
 
 
-class A10ThunderNoDevices(A10BaseException):
-    message = _('No configured and active devices')
+# class A10ThunderNoSession(A10BaseException):
+#     message = _('Unable to get session id from appliance')
 
 
-class A10ThunderVersionMismatch(A10BaseException):
-    message = _("A10Client: driver requires ACOS version 2.7.2+")
+# class A10ThunderNoDevices(A10BaseException):
+#     message = _('No configured and active devices')
 
 
-class UnsupportedFeatureAppCookie(A10BaseException):
-    message = _(
-        'This version of the driver does not support this'
-        ' feature in this release.')
+# class A10ThunderVersionMismatch(A10BaseException):
+#     message = _("A10Client: driver requires ACOS version 2.7.2+")
 
 
-class VipCreateError(A10BaseException):
-    message = _(
-        'VIP %(vip) could not be created.')
+# class UnsupportedFeatureAppCookie(A10BaseException):
+#     message = _(
+#         'This version of the driver does not support this'
+#         ' feature in this release.')
 
 
-class VipUpdateError(A10BaseException):
-    message = _(
-        'VIP %(vip) could not be Updated.')
+# class VipCreateError(A10BaseException):
+#     message = _(
+#         'VIP %(vip) could not be created.')
 
 
-class VipDeleteError(A10BaseException):
-    message = _(
-        'VIP %(vip) could not be Deleted.')
+# class VipUpdateError(A10BaseException):
+#     message = _(
+#         'VIP %(vip) could not be Updated.')
 
 
-class SgCreateError(A10BaseException):
-    message = _(
-        'ServiceGroup %(sg) could not be created.')
+# class VipDeleteError(A10BaseException):
+#     message = _(
+#         'VIP %(vip) could not be Deleted.')
 
 
-class SgUpdateError(A10BaseException):
-    message = _(
-        'ServiceGroup %(sg) could not be Updated.')
+# class SgCreateError(A10BaseException):
+#     message = _(
+#         'ServiceGroup %(sg) could not be created.')
 
 
-class SgDeleteError(A10BaseException):
-    message = _(
-        'ServiceGroup %(sg) could not be Deleted.')
+# class SgUpdateError(A10BaseException):
+#     message = _(
+#         'ServiceGroup %(sg) could not be Updated.')
 
 
-class MemberCreateError(A10BaseException):
-    message = _(
-        'Member %(member) could not be created.')
+# class SgDeleteError(A10BaseException):
+#     message = _(
+#         'ServiceGroup %(sg) could not be Deleted.')
 
 
-class MemberUpdateError(A10BaseException):
-    message = _(
-        'Member %(member) could not be Updated.')
+# class MemberCreateError(A10BaseException):
+#     message = _(
+#         'Member %(member) could not be created.')
 
 
-class MemberDeleteError(A10BaseException):
-    message = _(
-        'Member %(member) could not be Deleted.')
+# class MemberUpdateError(A10BaseException):
+#     message = _(
+#         'Member %(member) could not be Updated.')
 
 
-class ParitionCreateError(A10BaseException):
-    message = _(
-        'Parition %(parition) could not be created.')
+# class MemberDeleteError(A10BaseException):
+#     message = _(
+#         'Member %(member) could not be Deleted.')
 
 
-class ParitionUpdateError(A10BaseException):
-    message = _(
-        'Parition %(parition) could not be Updated.')
+# class ParitionCreateError(A10BaseException):
+#     message = _(
+#         'Parition %(parition) could not be created.')
 
 
-class ParitionDeleteError(A10BaseException):
-    message = _(
-        'Parition %(parition) could not be Deleted.')
+# class ParitionUpdateError(A10BaseException):
+#     message = _(
+#         'Parition %(parition) could not be Updated.')
 
 
-class ParitionActiveError(A10BaseException):
-    message = _(
-        'Parition %(parition) could not be made active.')
+# class ParitionDeleteError(A10BaseException):
+#     message = _(
+#         'Parition %(parition) could not be Deleted.')
 
 
-class HealthMonitorCreateError(A10BaseException):
-    message = _(
-        'HealthMonitor %(hm) could not be created.')
+# class ParitionActiveError(A10BaseException):
+#     message = _(
+#         'Parition %(parition) could not be made active.')
 
 
-class HealthMonitorUpdateError(A10BaseException):
-    message = _(
-        'HealthMonitor %(hm) could not be Updated.')
+# class HealthMonitorCreateError(A10BaseException):
+#     message = _(
+#         'HealthMonitor %(hm) could not be created.')
 
 
-class HealthMonitorDeleteError(A10BaseException):
-    message = _(
-        'HealthMonitor %(hm) could not be Deleted.')
+# class HealthMonitorUpdateError(A10BaseException):
+#     message = _(
+#         'HealthMonitor %(hm) could not be Updated.')
 
 
-class TemplateCreateError(A10BaseException):
-    message = _(
-        'Template %(template) could not be created.')
+# class HealthMonitorDeleteError(A10BaseException):
+#     message = _(
+#         'HealthMonitor %(hm) could not be Deleted.')
 
 
-class TemplateUpdateError(A10BaseException):
-    message = _(
-        'Template %(template) could not be Updated.')
+# class TemplateCreateError(A10BaseException):
+#     message = _(
+#         'Template %(template) could not be created.')
 
 
-class TemplateDeleteError(A10BaseException):
-    message = _(
-        'Template %(template) could not be Deleted.')
+# class TemplateUpdateError(A10BaseException):
+#     message = _(
+#         'Template %(template) could not be Updated.')
 
 
-class SearchError(A10BaseException):
-    message = _(
-        'Search Error: %(term)')
+# class TemplateDeleteError(A10BaseException):
+#     message = _(
+#         'Template %(template) could not be Deleted.')
+
+
+# class SearchError(A10BaseException):
+#     message = _(
+#         'Search Error: %(term)')

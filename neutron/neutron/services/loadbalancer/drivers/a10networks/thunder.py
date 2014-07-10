@@ -1,6 +1,4 @@
-# vim: tabstop=4 shiftwidth=4 softtabstop=4
-
-# Copyright 2013,  Mike Thompson,  A10 Networks.
+# Copyright 2014, Doug Wiegley (dougwig), A10 Networks
 #
 #    Licensed under the Apache License, Version 2.0 (the "License"); you may
 #    not use this file except in compliance with the License. You may obtain
@@ -14,30 +12,51 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
-from neutron.db import l3_db
-from neutron.db.loadbalancer import loadbalancer_db as lb_db
+import acos_client
 from neutron.openstack.common import log as logging
-from neutron.plugins.common import constants
-from neutron.services.loadbalancer.drivers.a10networks import (
-    a10_exceptions as a10_ex
-)
-from neutron.services.loadbalancer.drivers.a10networks import a10_config
-from neutron.services.loadbalancer.drivers.a10networks import acos_client
+from neutron.services.loadbalancer.drivers import driver_base
 
-VERSION = "0.3.2"
+import a10_config
+
+VERSION = "1.0.0"
 LOG = logging.getLogger(__name__)
 
 
-# TODO(dougw) - not inheriting; causes issues with Havana
-# from neutron.services.loadbalancer.drivers import abstract_driver
-# class ThunderDriver(abstract_driver.LoadBalancerAbstractDriver):
-class ThunderDriver(object):
+class ThunderDriver(driver_base.LoadBalancerBaseDriver):
 
     def __init__(self, plugin):
-        LOG.info("A10Driver: init version=%s", VERSION)
-        self.plugin = plugin
+        super(ThunderDriver, self).__init__(plugin)
+
+        self.load_balancer = LoadBalancerManager(self)
+        self.listener = ListenerManager(self)
+        self.pool = PoolManager(self)
+        self.member = MemberManager(self)
+        self.health_monitor = HealthMonitorManager(self)
+
+        LOG.info("A10Driver: initializing, version=%s, acos_client=%s",
+                 VERSION, acos_client.VERSION)
+
         self.config = a10_config.A10Config()
-        self._verify_appliances()
+        self.appliance_hash = acos_client.Hash(self.config.devices.keys())
+        if self.config.get('verify_appliances', True):
+            self._verify_appliances()
+
+    def _get_a10_client(self, tenant_id, device_info=None):
+        if device_info is None:
+            s = self.appliance_hash.get_server(tenant_id)
+            d = self.config.devices[s]
+        else:
+            d = device_info
+
+        protocol = d.get('protocol', 'https')
+        port = {'http': 80, 'https': 443}[protocol]
+        if 'port' in d:
+            port = d['port']
+
+        return acos_client.Client(d['host'],
+                                  d.get('api_version', acos_client.AXAPI_21),
+                                  d['username'], d['password'],
+                                  port=port, protocol=protocol)
 
     def _verify_appliances(self):
         LOG.info("A10Driver: verifying appliances")
@@ -47,339 +66,253 @@ class ThunderDriver(object):
 
         for k, v in self.config.devices.items():
             try:
-                acos_client.A10Client(self.config, dev_info=v,
-                                      version_check=True)
-            except a10_ex.A10BaseException:
+                LOG.info("A10Driver: appliance(%s) = %s", k,
+                         self._get_a10_client(None, v).system.information())
+            except Exception:
                 LOG.error(_("A10Driver: unable to connect to configured"
-                            "appliance, name=%s"), v['name'])
+                            "appliance, name=%s"), k)
 
-    def _device_context(self, tenant_id=""):
-        return acos_client.A10Client(self.config, tenant_id=tenant_id)
 
-    def _active(self, context, model, vid):
-        self.plugin.update_status(context, model, vid, constants.ACTIVE)
+class A10Context(object):
 
-    def _failed(self, context, model, vid):
-        self.plugin.update_status(context, model, vid, constants.ERROR)
+    def __init__(self, mgr, context, lbaas_obj):
+        self.mgr = mgr
+        self.context = context
+        self.lbaas_obj = lbaas_obj
 
-    def _persistence_create(self, a10, vip):
-        persist_type = vip['session_persistence']['type']
-        name = vip['id']
+    def __enter__(self):
+        self.client = self.a10_client(self.lbaas_obj.tenant_id)
+        return self.client
 
+    def __exit__(self, exc_type, exc_value, traceback):
+        self.client.session.close()
+
+        if exc_type is not None:
+            todo_error
+
+    def a10_client(self, tenant_id):
+        c = self.mgr.driver._get_a10_client(self.lbaas_obj.tenant_id)
+        self.select_appliance_partition(c, tenant_id)
+        return c
+
+    def select_appliance_partition(self, client, tenant_id):
+        # If we are not using appliance partitions, we are done.
+        if self.device_info['v_method'].lower() != 'adp':
+            return
+
+        # Try to make the requested partition active
         try:
-            if a10.persistence_exists(persist_type, name):
-                return name
-            a10.persistence_create(persist_type, name)
-        except Exception:
-            raise a10_ex.TemplateCreateError(template=name)
-
-        return name
-
-    def _setup_vip_args(self, a10, vip):
-        s_pers = None
-        c_pers = None
-        LOG.debug("_setup_vip_args vip=%s", vip)
-        if ('session_persistence' in vip and
-                vip['session_persistence'] is not None):
-            LOG.debug("creating persistence template")
-            pname = self._persistence_create(a10, vip)
-            if vip['session_persistence']['type'] is "HTTP_COOKIE":
-                c_pers = pname
-            elif vip['session_persistence']['type'] == "SOURCE_IP":
-                s_pers = pname
-        status = 1
-        if vip['admin_state_up'] is False:
-            status = 0
-        LOG.debug("_setup_vip_args = %s, %s, %d", s_pers, c_pers, status)
-        return s_pers, c_pers, status
-
-    def create_vip(self, context, vip):
-        a10 = self._device_context(tenant_id=vip['tenant_id'])
-        s_pers, c_pers, status = self._setup_vip_args(a10, vip)
-
-        try:
-            a10.virtual_server_create(vip['id'], vip['address'],
-                                      vip['protocol'], vip['protocol_port'],
-                                      vip['pool_id'],
-                                      s_pers, c_pers, status)
-            self._active(context, lb_db.Vip, vip['id'])
-
-        except Exception:
-            self._failed(context, lb_db.Vip, vip['id'])
-            raise a10_ex.VipCreateError(vip=vip['id'])
-
-    def update_vip(self, context, old_vip, vip):
-        a10 = self._device_context(tenant_id=vip['tenant_id'])
-        s_pers, c_pers, status = self._setup_vip_args(a10, vip)
-
-        try:
-            a10.virtual_port_update(vip['id'], vip['protocol'],
-                                    vip['pool_id'],
-                                    s_pers, c_pers, status)
-            self._active(context, lb_db.Vip, vip['id'])
-
-        except Exception:
-            self._failed(context, lb_db.Vip, vip['id'])
-            raise a10_ex.VipUpdateError(vip=vip['id'])
-
-    def delete_vip(self, context, vip):
-        a10 = self._device_context(tenant_id=vip['tenant_id'])
-        try:
-            if vip['session_persistence'] is not None:
-                a10.persistence_delete(vip['session_persistence']['type'],
-                                       vip['id'])
-        except Exception:
+            client.system.partition.active(tenant_id)
+            return
+        except acos_errors.NotFound:
             pass
 
-        try:
-            a10.virtual_server_delete(vip['id'])
-            self.plugin._delete_db_vip(context, vip['id'])
-        except Exception:
-            self._failed(context, lb_db.Vip, vip['id'])
-            raise a10_ex.VipDeleteError(vip=vip['id'])
+        # Create it if not found
+        client.system.partition.create(tenant_id)
+        client.system.partition.active(tenant_id)
 
-    def create_pool(self, context, pool):
-        a10 = self._device_context(tenant_id=pool['tenant_id'])
-        try:
-            if pool['lb_method'] == "ROUND_ROBIN":
-                lb_method = "0"
-            elif pool['lb_method'] == "LEAST_CONNECTIONS":
-                lb_method = "2"
-            else:
-                lb_method = "3"
 
-            a10.service_group_create(pool['id'], lb_method)
-            self._active(context, lb_db.Pool, pool['id'])
-        except Exception:
-            self._failed(context, lb_db.Pool, pool['id'])
-            raise a10_ex.SgCreateError(sg=pool['id'])
+class A10WriteContext(A10Context):
 
-    def update_pool(self, context, old_pool, pool):
-        a10 = self._device_context(tenant_id=pool['tenant_id'])
-        try:
-            if pool['lb_method'] == "ROUND_ROBIN":
-                lb_method = "0"
-            elif pool['lb_method'] == "LEAST_CONNECTIONS":
-                lb_method = "2"
-            else:
-                lb_method = "3"
+    def __exit__(self, exc_type, exc_value, traceback):
+        if exc_type is None:
+            self.a10_client.system.write_memory()
 
-            a10.service_group_update(pool['id'], lb_method)
-            self._active(context, lb_db.Pool, pool['id'])
-        except Exception:
-            self._failed(context, lb_db.Pool, pool['id'])
-            raise a10_ex.SgUpdateError(sg=pool['id'])
+        super(A10WriteContext, self).__exit__(exc_type, exc_value, traceback)
 
-    def delete_pool(self, context, pool):
-        LOG.debug('delete_pool context=%s, pool=%s' % (context, pool))
-        a10 = self._device_context(tenant_id=pool['tenant_id'])
 
-        for members in pool['members']:
-            self.delete_member(context, self.plugin.get_member(
-                context, members))
+class A10WriteStatusContext(A10WriteContext):
 
-        for hm in pool['health_monitors_status']:
-            hmon = self.plugin.get_health_monitor(context, hm['monitor_id'])
-            self.delete_pool_health_monitor(context, hmon, pool['id'])
+    def __exit__(self, exc_type, exc_value, traceback):
+        if exc_type is None:
+            self.active(self.context, self.obj_id)
+        else:
+            self.failed(self.context, self.obj_id)
 
-        removed_a10 = False
-        try:
-            a10.service_group_delete(pool['id'])
-            removed_a10 = True
-            self.plugin._delete_db_pool(context, pool['id'])
+        super(A10CreateContext, self).__exit__(exc_type, exc_value, traceback)
 
-        except Exception:
-            if removed_a10:
-                raise a10_ex.SgDeleteError(sg="SG was REMOVED from ACOS "
-                                           "entity but cloud not be removed "
-                                           "from OS DB.")
-            else:
-                raise a10_ex.SgDeleteError(sg="SG was not REMOVED from an "
-                                           "ACOS entity please contact your "
-                                           "admin.")
 
-        finally:
-            if a10.device_info['v_method'].lower() == 'adp':
-                tpool = context._session.query(lb_db.Pool)
-                n = tpool.filter_by(tenant_id=pool['tenant_id']).count()
-                if n == 0:
-                    try:
-                        a10.partition_delete(tenant_id=pool['tenant_id'])
-                    except Exception:
-                        raise a10_ex.ParitionDeleteError(
-                            partition=pool['tenant_id'][0:13])
+class A10DeleteContext(A10WriteContext):
 
-    def stats(self, context, pool_id):
-        pool_qry = context._session.query(lb_db.Pool).filter_by(id=pool_id)
-        vip_id = pool_qry.vip_id
-        a10 = self._device_context(tenant_id=pool_qry.tenant_id)
-        try:
-            r = a10.stats(vip_id)
-            s = {
-                "bytes_in": r["virtual_server_stat"]["req_bytes"],
-                "bytes_out": r["virtual_server_stat"]["resp_bytes"],
-                "active_connections": r["virtual_server_stat"]["cur_conns"],
-                "total_connections": r["virtual_server_stat"]["tot_conns"]
-            }
-        except Exception:
-            s = {
+    def __exit__(self, exc_type, exc_value, traceback):
+        if exc_type is None:
+            self.db_delete(self.context, self.obj_id)
+
+        super(A10DeleteContext, self).__exit__(exc_type, exc_value, traceback)
+
+
+class LoadBalancerManager(driver_base.BaseLoadBalancerManager):
+    # SESSION_PERSISTENCE_SOURCE_IP = 'SOURCE_IP'
+    # SESSION_PERSISTENCE_HTTP_COOKIE = 'HTTP_COOKIE'
+    # SESSION_PERSISTENCE_APP_COOKIE = 'APP_COOKIE'
+
+    def create(self, context, load_balancer):
+        with A10CreateContext(self, context, load_balancer) as c:
+            c.slb.virtual_server.create(blah)
+
+    def create(self, context, obj):
+        with A10WriteStatusContext(self, context, pool) as c:
+            a10.slb.virtual_service.create(blah)
+
+    def update(self, context, old_obj, obj):
+        with A10WriteStatusContext(self, context, pool) as c:
+            a10.slb.virtual_service.update(blah)
+
+    def delete(self, context, obj):
+        with A10DeleteContext(self, context, pool) as c:
+            a10.slb.virtual_service.delete(blah)
+
+    def refresh(self, context, lb_obj, force=False):
+        # This is intended to trigger the backend to check and repair
+        # the state of this load balancer and all of its dependent objects
+        LOG.debug("LB pool refresh %s, force=%s", lb_obj.id, force)
+        with A10WriteStatusContext(self, context, pool) as c:
+            todo
+
+    def stats(self, context, lb_obj_id):
+        with A10Context(self, context, pool) as c:
+            LOG.debug("LB stats %s", lb_obj_id)
+            return {
                 "bytes_in": 0,
                 "bytes_out": 0,
                 "active_connections": 0,
                 "total_connections": 0
             }
-        return s
 
-    def _get_member_ip(self, context, member, a10):
-        ip_address = member['address']
-        if a10.device_info['use_float']:
-            fip_qry = context.session.query(l3_db.FloatingIP)
-            if (fip_qry.filter_by(fixed_ip_address=ip_address).count() > 0):
-                float_address = fip_qry.filter_by(
-                    fixed_ip_address=ip_address).first()
-                ip_address = str(float_address.floating_ip_address)
-        return ip_address
 
-    def _get_member_server_name(self, member, ip_address):
-        tenant_label = member['tenant_id'][:5]
-        addr_label = str(ip_address).replace(".", "_", 4)
-        server_name = "_%s_%s_neutron" % (tenant_label, addr_label)
-        return server_name
+class ListenerManager(driver_base.BaseListenerManager):
 
-    def create_member(self, context, member):
-        a10 = self._device_context(tenant_id=member['tenant_id'])
+    # class VirtualService(base.BaseV21):   # aka VirtualPort
+    #     # Protocols
+    #     TCP = 2
+    #     UDP = 3
+    #     HTTP = 11
+    #     HTTPS = 12
+    # PROTOCOL_TCP = 'TCP'
+    # PROTOCOL_HTTP = 'HTTP'
+    # PROTOCOL_HTTPS = 'HTTPS'
+    # def create(self, name, ip_address, protocol, port, service_group_id,
+    #            s_pers=None, c_pers=None, status=1):
 
-        ip_address = self._get_member_ip(context, member, a10)
-        server_name = self._get_member_server_name(member, ip_address)
+    def create(self, context, listener):
+        protocols = {
+            'TCP': a10.slb.virtual_service.protocol.TCP,
+            'UDP': a10.slb.virtual_service.protocol.UDP,
+            'HTTP': a10.slb.virtual_service.protocol.HTTP,
+            'HTTPS': a10.slb.virtual_service.protocol.HTTPS
+        }
 
-        try:
-            if 'server' not in a10.server_get(server_name):
-                a10.server_create(server_name, ip_address)
-        except Exception:
-            self._failed(context, lb_db.Member, member["id"])
-            raise a10_ex.MemberCreateError(member=server_name)
+        a10.slb.virtual_service.create(listener.id,
+                                       protocols[listener.protocol],
+                                       listener.port,
+                                       listener.pool_id,
+                                       spers,
+                                       cpers,
+                                       status)
 
-        try:
-            status = 1
-            if member["admin_state_up"] is False:
-                status = 0
+    def create(self, context, obj):
+        with A10WriteStatusContext(self, context, pool) as c:
+            a10.slb.virtual_server.create(blah)
 
-            a10.member_create(member['pool_id'], server_name,
-                              member['protocol_port'], status)
-            self._active(context, lb_db.Member, member["id"])
-        except Exception:
-            self._failed(context, lb_db.Member, member["id"])
-            raise a10_ex.MemberCreateError(member=server_name)
+    def update(self, context, old_obj, obj):
+        with A10WriteStatusContext(self, context, pool) as c:
+            a10.slb.virtual_server.update(blah)
 
-    def update_member(self, context, old_member, member):
-        a10 = self._device_context(tenant_id=member['tenant_id'])
+    def delete(self, context, obj):
+        with A10DeleteContext(self, context, pool) as c:
+            a10.slb.virtual_server.delete(blah)
 
-        ip_address = self._get_member_ip(context, member, a10)
-        server_name = self._get_member_server_name(member, ip_address)
 
-        try:
-            status = 1
-            if member["admin_state_up"] is False:
-                status = 0
+class PoolManager(driver_base.BasePoolManager):
 
-            a10.member_update(member['pool_id'], server_name,
-                              member['protocol_port'], status)
-            self._active(context, lb_db.Member, member["id"])
-        except Exception:
-            self._failed(context, lb_db.Member, member["id"])
-            raise a10_ex.MemberUpdateError(member=server_name)
+    def _set(self, context, pool, c, set_method):
+        lb_algorithms = {
+            'ROUND_ROBIN': c.slb.service_group.ROUND_ROBIN,
+            'LEAST_CONNECTIONS': c.slb.service_group.LEAST_CONNECTION,
+            'SOURCE_IP': c.slb.service_group.WEIGHTED_LEAST_CONNECTION
+        }
+        protocols = {
+            'TCP': c.slb.service_group.TCP,
+            'UDP': c.slb.service_group.UDP
+        }
 
-    def delete_member(self, context, member):
-        a10 = self._device_context(tenant_id=member['tenant_id'])
+        set_method(pool.id,
+                   protocol=protocols[pool.protocol],
+                   lb_method=algoritms[pool.lb_algorithm])
 
-        member_count = context._session.query(lb_db.Member).filter_by(
-            tenant_id=member['tenant_id'],
-            address=member['address']).count()
+    def create(self, context, pool):
+        with A10WriteStatusContext(self, context, pool) as c:
+            self._set(context, pool, c, c.slb.service_group.create)
 
-        ip_address = self._get_member_ip(context, member, a10)
-        server_name = self._get_member_server_name(member, ip_address)
+    def update(self, context, old_pool, pool):
+        with A10WriteStatusContext(self, context, pool) as c:
+            self._set(context, pool, c, c.slb.service_group.update)
 
-        try:
-            if member_count > 1:
-                a10.member_delete(member['pool_id'], server_name,
-                                  member['protocol_port'])
-                self.plugin._delete_db_member(context, member['id'])
+    def delete(self, context, pool):
+        with A10DeleteContext(self, context, pool) as c:
+            for member in pool.members:
+                todo  # delete member, call driver interface or api direct?
+            if pool.health_monitor:
+                todo  # delete hm, call driver interface or api direct?
+            c.slb.service_group.delete(pool.id)
+
+
+class MemberManager(driver_base.BaseMemberManager):
+
+    def create(self, context, member):
+        with A10WriteStatusContext(self, context, pool) as c:
+            if member.admin_state_up:
+                status = c.slb.service_group.member.UP
             else:
-                a10.server_delete(server_name)
-                self.plugin._delete_db_member(context, member['id'])
-        except Exception:
-            self._failed(context, lb_db.Member, member["id"])
-            raise a10_ex.MemberDeleteError(member=member["id"])
+                status = c.slb.service_group.member.DOWN
 
-    def update_pool_health_monitor(self, context, old_health_monitor,
-                                   health_monitor, pool_id):
-        a10 = self._device_context(tenant_id=health_monitor['tenant_id'])
-        hm_name = health_monitor['id'][0:28]
-        try:
-            a10.health_monitor_update(health_monitor['type'],
-                                      hm_name,
-                                      health_monitor['delay'],
-                                      health_monitor['timeout'],
-                                      health_monitor['max_retries'],
-                                      health_monitor.get('http_method'),
-                                      health_monitor.get('url_path'),
-                                      health_monitor.get('expected_codes'))
+            try:
+                a10.server_create(server_name, ip_address)
+            except acos_errors.Exists:
+                pass
 
-            self.plugin.update_pool_health_monitor(context,
-                                                   health_monitor["id"],
-                                                   pool_id,
-                                                   constants.ACTIVE)
+            a10.slb.member.create(member.pool_id,
+                                  server_name, member.protocol_port,
+                                  status=status)
 
-        except Exception:
-            raise a10_ex.HealthMonitorUpdateError(hm=hm_name)
+    def update(self, context, old_obj, obj):
+        with A10WriteStatusContext(self, context, pool) as c:
+            a10.slb.service_group.member.update(blah)
 
-    def create_pool_health_monitor(self, context, health_monitor, pool_id):
-        a10 = self._device_context(tenant_id=health_monitor['tenant_id'])
-        hm_name = health_monitor['id'][0:28]
-        try:
-            a10.health_monitor_create(health_monitor['type'],
-                                      hm_name,
-                                      health_monitor['delay'],
-                                      health_monitor['timeout'],
-                                      health_monitor['max_retries'],
-                                      health_monitor.get('http_method'),
-                                      health_monitor.get('url_path'),
-                                      health_monitor.get('expected_codes'))
+    @lbaas_delete
+    def delete(self, context, obj):
+        with A10DeleteContext(self, context, pool) as c:
+            a10.slb.service_group.member.delete(blah)
 
-            for pool in health_monitor['pools']:
-                a10.service_group_update_hm(pool['pool_id'], hm_name)
 
-            self.plugin.update_pool_health_monitor(context,
-                                                   health_monitor["id"],
-                                                   pool_id,
-                                                   constants.ACTIVE)
-        except Exception:
-            self.plugin.update_pool_health_monitor(context,
-                                                   health_monitor["id"],
-                                                   pool_id,
-                                                   constants.ERROR)
-            self.plugin._delete_db_pool_health_monitor(context,
-                                                       health_monitor['id'],
-                                                       pool_id)
-            raise a10_ex.HealthMonitorUpdateError(hm=hm_name)
+class HealthMonitorManager(driver_base.BaseHealthMonitorManager):
 
-    def delete_pool_health_monitor(self, context, health_monitor, pool_id):
-        a10 = self._device_context(tenant_id=health_monitor['tenant_id'])
-        try:
-            a10.service_group_update_hm(pool_id, "")
+    def _set(self, context, hm, c, set_method):
+        hm_map = {
+            'PING': c.slb.hm.ICMP,
+            'TCP': c.slb.hm.TCP,
+            'HTTP': c.slb.hm.HTTP,
+            'HTTPS': c.slb.hm.HTTPS
+        }
 
-            hm_binding_qty = (context.session.query(
-                lb_db.PoolMonitorAssociation
-            ).filter_by(monitor_id=health_monitor['id']).join(lb_db.Pool)
-                .count())
-            if hm_binding_qty == 1:
-                a10.health_monitor_delete(health_monitor['id'][0:28])
+        hm_name = hm.id[0:28]
+        set_method(hm_name, hm_map[hm.type],
+                   hm.delay, hm.timeout, hm.max_retries,
+                   hm.http_method, hm.url_path, hm.expected_codes)
 
-            self.plugin._delete_db_pool_health_monitor(context,
-                                                       health_monitor['id'],
-                                                       pool_id)
-        except Exception:
-            self.plugin.update_pool_health_monitor(context,
-                                                   health_monitor["id"],
-                                                   pool_id,
-                                                   constants.ERROR)
+        if hm.pool:
+            c.slb.service_group.update(hm.pool.id, health_monitor=hm_name)
+
+    def create(self, context, hm):
+        with A10WriteStatusContext(self, context, pool) as c:
+            self._set(context, hm, c, c.slb.hm.create)
+
+    def update(self, context, old_hm, hm):
+        with A10WriteStatusContext(self, context, pool) as c:
+            self._set(context, hm, c, c.slb.hm.update)
+
+    def delete(self, context, hm):
+        with A10DeleteContext(self, context, pool) as c:
+            if hm.pool:
+                c.slb.service_group.update(hm.pool.id, health_monitor="")
+            c.slb.hm.delete(hm.id[0:28])
