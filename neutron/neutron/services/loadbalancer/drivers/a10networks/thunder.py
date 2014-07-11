@@ -41,13 +41,12 @@ class ThunderDriver(driver_base.LoadBalancerBaseDriver):
         if self.config.get('verify_appliances', True):
             self._verify_appliances()
 
-    def _get_a10_client(self, tenant_id, device_info=None):
-        if device_info is None:
-            s = self.appliance_hash.get_server(tenant_id)
-            d = self.config.devices[s]
-        else:
-            d = device_info
+    def _select_a10_device(self, tenant_id):
+        s = self.appliance_hash.get_server(tenant_id)
+        return self.config.devices[s]
 
+    def _get_a10_client(self, device_info):
+        d = device_info
         protocol = d.get('protocol', 'https')
         port = {'http': 80, 'https': 443}[protocol]
         if 'port' in d:
@@ -67,7 +66,7 @@ class ThunderDriver(driver_base.LoadBalancerBaseDriver):
         for k, v in self.config.devices.items():
             try:
                 LOG.info("A10Driver: appliance(%s) = %s", k,
-                         self._get_a10_client(None, v).system.information())
+                         self._get_a10_client(v).system.information())
             except Exception:
                 LOG.error(_("A10Driver: unable to connect to configured"
                             "appliance, name=%s"), k)
@@ -81,8 +80,11 @@ class A10Context(object):
         self.lbaas_obj = lbaas_obj
 
     def __enter__(self):
-        self.client = self.a10_client(self.lbaas_obj.tenant_id)
-        return self.client
+        self.tenant_id = self.lbaas_obj.tenant_id
+        self.device_cfg = self.mgr.driver._select_a10_device(self.tenant_id)
+        self.client = self.mgr.driver._get_a10_client(self.device_cfg)
+        self.select_appliance_partition()
+        return self
 
     def __exit__(self, exc_type, exc_value, traceback):
         self.client.session.close()
@@ -90,33 +92,28 @@ class A10Context(object):
         if exc_type is not None:
             todo_error
 
-    def a10_client(self, tenant_id):
-        c = self.mgr.driver._get_a10_client(self.lbaas_obj.tenant_id)
-        self.select_appliance_partition(c, tenant_id)
-        return c
-
-    def select_appliance_partition(self, client, tenant_id):
+    def select_appliance_partition(self):
         # If we are not using appliance partitions, we are done.
-        if self.device_info['v_method'].lower() != 'adp':
+        if self.device_cfg['v_method'].lower() != 'adp':
             return
 
         # Try to make the requested partition active
         try:
-            client.system.partition.active(tenant_id)
+            self.client.system.partition.active(self.tenant_id)
             return
         except acos_errors.NotFound:
             pass
 
         # Create it if not found
-        client.system.partition.create(tenant_id)
-        client.system.partition.active(tenant_id)
+        self.client.system.partition.create(self.tenant_id)
+        self.client.system.partition.active(self.tenant_id)
 
 
 class A10WriteContext(A10Context):
 
     def __exit__(self, exc_type, exc_value, traceback):
         if exc_type is None:
-            self.a10_client.system.write_memory()
+            self.client.system.write_memory()
 
         super(A10WriteContext, self).__exit__(exc_type, exc_value, traceback)
 
@@ -125,9 +122,9 @@ class A10WriteStatusContext(A10WriteContext):
 
     def __exit__(self, exc_type, exc_value, traceback):
         if exc_type is None:
-            self.active(self.context, self.obj_id)
+            self.mgr.active(self.context, self.lbaas_obj.id)
         else:
-            self.failed(self.context, self.obj_id)
+            self.mgr.failed(self.context, self.baas_obj.id)
 
         super(A10CreateContext, self).__exit__(exc_type, exc_value, traceback)
 
@@ -136,9 +133,30 @@ class A10DeleteContext(A10WriteContext):
 
     def __exit__(self, exc_type, exc_value, traceback):
         if exc_type is None:
-            self.db_delete(self.context, self.obj_id)
+            self.db_delete(self.context, self.baas_obj.id)
+            self.partition_cleanup_check()
 
         super(A10DeleteContext, self).__exit__(exc_type, exc_value, traceback)
+
+    def partition_cleanup_check(self):
+        todo
+        tloadbalander = context._session.query(lb_db.Pool)
+        n = tpool.filter_by(tenant_id=pool['tenant_id']).count()
+
+        tlistener = context._session.query(lb_db.Pool)
+        n = tpool.filter_by(tenant_id=pool['tenant_id']).count()
+
+        tpool = context._session.query(lb_db.Pool)
+        n = tpool.filter_by(tenant_id=pool['tenant_id']).count()
+
+        if n == 0 and n == 0 and n == 0:
+                   try:
+                        a10.partition_delete(tenant_id=pool['tenant_id'])
+                    except Exception:
+                        raise a10_ex.ParitionDeleteError(
+                            partition=pool['tenant_id'][0:13])
+
+
 
 
 class LoadBalancerManager(driver_base.BaseLoadBalancerManager):
@@ -148,7 +166,7 @@ class LoadBalancerManager(driver_base.BaseLoadBalancerManager):
 
     def create(self, context, load_balancer):
         with A10CreateContext(self, context, load_balancer) as c:
-            c.slb.virtual_server.create(blah)
+            c.client.slb.virtual_server.create(blah)
 
     def create(self, context, obj):
         with A10WriteStatusContext(self, context, pool) as c:
@@ -169,28 +187,29 @@ class LoadBalancerManager(driver_base.BaseLoadBalancerManager):
         with A10WriteStatusContext(self, context, pool) as c:
             todo
 
-    def stats(self, context, lb_obj_id):
+    def stats(self, context, lb_obj):
         with A10Context(self, context, pool) as c:
-            LOG.debug("LB stats %s", lb_obj_id)
-            return {
-                "bytes_in": 0,
-                "bytes_out": 0,
-                "active_connections": 0,
-                "total_connections": 0
-            }
+            try:
+                r = c.client.client.slb.virtual_server.stats(lb_obj.id)
+                return {
+                    "bytes_in": r["virtual_server_stat"]["req_bytes"],
+                    "bytes_out": r["virtual_server_stat"]["resp_bytes"],
+                    "active_connections": 
+                        r["virtual_server_stat"]["cur_conns"],
+                    "total_connections": r["virtual_server_stat"]["tot_conns"]
+                }
+            except Exception:
+                return {
+                    "bytes_in": 0,
+                    "bytes_out": 0,
+                    "active_connections": 0,
+                    "total_connections": 0
+                }
 
+# TODO - can i create a virtual server without a port?
 
 class ListenerManager(driver_base.BaseListenerManager):
 
-    # class VirtualService(base.BaseV21):   # aka VirtualPort
-    #     # Protocols
-    #     TCP = 2
-    #     UDP = 3
-    #     HTTP = 11
-    #     HTTPS = 12
-    # PROTOCOL_TCP = 'TCP'
-    # PROTOCOL_HTTP = 'HTTP'
-    # PROTOCOL_HTTPS = 'HTTPS'
     # def create(self, name, ip_address, protocol, port, service_group_id,
     #            s_pers=None, c_pers=None, status=1):
 
@@ -212,28 +231,34 @@ class ListenerManager(driver_base.BaseListenerManager):
 
     def create(self, context, obj):
         with A10WriteStatusContext(self, context, pool) as c:
-            a10.slb.virtual_server.create(blah)
+            a10.slb.virtual_service.create(blah)
 
     def update(self, context, old_obj, obj):
         with A10WriteStatusContext(self, context, pool) as c:
-            a10.slb.virtual_server.update(blah)
+            a10.slb.virtual_service.update(blah)
 
     def delete(self, context, obj):
         with A10DeleteContext(self, context, pool) as c:
-            a10.slb.virtual_server.delete(blah)
+            try:
+                if vip['session_persistence'] is not None:
+                    a10.persistence_delete(vip['session_persistence']['type'],
+                                           vip['id'])
+            except Exception:
+                pass
+            a10.slb.virtual_service.delete(blah)
 
 
 class PoolManager(driver_base.BasePoolManager):
 
     def _set(self, context, pool, c, set_method):
         lb_algorithms = {
-            'ROUND_ROBIN': c.slb.service_group.ROUND_ROBIN,
-            'LEAST_CONNECTIONS': c.slb.service_group.LEAST_CONNECTION,
-            'SOURCE_IP': c.slb.service_group.WEIGHTED_LEAST_CONNECTION
+            'ROUND_ROBIN': c.client.slb.service_group.ROUND_ROBIN,
+            'LEAST_CONNECTIONS': c.client.slb.service_group.LEAST_CONNECTION,
+            'SOURCE_IP': c.client.slb.service_group.WEIGHTED_LEAST_CONNECTION
         }
         protocols = {
-            'TCP': c.slb.service_group.TCP,
-            'UDP': c.slb.service_group.UDP
+            'TCP': c.client.slb.service_group.TCP,
+            'UDP': c.client.slb.service_group.UDP
         }
 
         set_method(pool.id,
@@ -242,11 +267,11 @@ class PoolManager(driver_base.BasePoolManager):
 
     def create(self, context, pool):
         with A10WriteStatusContext(self, context, pool) as c:
-            self._set(context, pool, c, c.slb.service_group.create)
+            self._set(context, pool, c, c.client.slb.service_group.create)
 
     def update(self, context, old_pool, pool):
         with A10WriteStatusContext(self, context, pool) as c:
-            self._set(context, pool, c, c.slb.service_group.update)
+            self._set(context, pool, c, c.client.slb.service_group.update)
 
     def delete(self, context, pool):
         with A10DeleteContext(self, context, pool) as c:
@@ -254,45 +279,92 @@ class PoolManager(driver_base.BasePoolManager):
                 todo  # delete member, call driver interface or api direct?
             if pool.health_monitor:
                 todo  # delete hm, call driver interface or api direct?
-            c.slb.service_group.delete(pool.id)
+            for members in pool['members']:
+                self.delete_member(context, self.plugin.get_member(
+                    context, members))
+
+            for hm in pool['health_monitors_status']:
+                hmon = self.plugin.get_health_monitor(context, hm['monitor_id'])
+                self.delete_pool_health_monitor(context, hmon, pool['id'])
+            c.client.slb.service_group.delete(pool.id)
 
 
 class MemberManager(driver_base.BaseMemberManager):
 
+    def _get_ip(self, context, member, use_float=False):
+        ip_address = member['address']
+        if use_float:
+            fip_qry = context.session.query(l3_db.FloatingIP)
+            if (fip_qry.filter_by(fixed_ip_address=ip_address).count() > 0):
+                float_address = fip_qry.filter_by(
+                    fixed_ip_address=ip_address).first()
+                ip_address = str(float_address.floating_ip_address)
+        return ip_address
+
+    def _get_name(self, member, ip_address):
+        tenant_label = member['tenant_id'][:5]
+        addr_label = str(ip_address).replace(".", "_", 4)
+        server_name = "_%s_%s_neutron" % (tenant_label, addr_label)
+        return server_name
+
+    def _count(self, context, member):
+        return context._session.query(lb_db.Member).filter_by(
+            tenant_id=member['tenant_id'],
+            address=member['address']).count()
+
     def create(self, context, member):
         with A10WriteStatusContext(self, context, pool) as c:
-            if member.admin_state_up:
-                status = c.slb.service_group.member.UP
-            else:
-                status = c.slb.service_group.member.DOWN
+            server_ip = self._get_ip(context, member,
+                                     c.device_cfg['use_float'])
+            server_name = self._get_name(member, server_ip)
+
+            status = c.client.slb.service_group.member.UP
+            if not member["admin_state_up"]:
+                status = c.client.slb.service_group.member.DOWN
 
             try:
-                a10.server_create(server_name, ip_address)
+                c.client.server_create(server_name, ip_address)
             except acos_errors.Exists:
                 pass
 
-            a10.slb.member.create(member.pool_id,
-                                  server_name, member.protocol_port,
-                                  status=status)
+            c.client.slb.member.create(member.pool_id, server_name,
+                                member.protocol_port, status=status)
 
     def update(self, context, old_obj, obj):
         with A10WriteStatusContext(self, context, pool) as c:
-            a10.slb.service_group.member.update(blah)
+            server_ip = self._get_ip(context, member,
+                                     c.device_cfg['use_float'])
+            server_name = self._get_name(member, server_ip)
 
-    @lbaas_delete
-    def delete(self, context, obj):
+            status = c.client.slb.service_group.member.UP
+            if not member["admin_state_up"]:
+                status = c.client.slb.service_group.member.DOWN
+
+            c.client.slb.service_group.member.update(member.pool_id, server_name,
+                                              member.protocol_port, status)
+
+    def delete(self, context, member):
         with A10DeleteContext(self, context, pool) as c:
-            a10.slb.service_group.member.delete(blah)
+            server_ip = self._get_ip(context, member, todo,
+                                     c.device_cfg['use_float'])
+            server_name = self._get_name(member, server_ip)
+
+            if self._count(context, member) > 1:
+                c.client.slb.service_group.member.delete(member.pool_id,
+                                                  server_name,
+                                                  member.protocol_port)
+            else:
+                c.client.slb.server.delete(server_name)
 
 
 class HealthMonitorManager(driver_base.BaseHealthMonitorManager):
 
     def _set(self, context, hm, c, set_method):
         hm_map = {
-            'PING': c.slb.hm.ICMP,
-            'TCP': c.slb.hm.TCP,
-            'HTTP': c.slb.hm.HTTP,
-            'HTTPS': c.slb.hm.HTTPS
+            'PING': c.client.slb.hm.ICMP,
+            'TCP': c.client.slb.hm.TCP,
+            'HTTP': c.client.slb.hm.HTTP,
+            'HTTPS': c.client.slb.hm.HTTPS
         }
 
         hm_name = hm.id[0:28]
@@ -301,18 +373,18 @@ class HealthMonitorManager(driver_base.BaseHealthMonitorManager):
                    hm.http_method, hm.url_path, hm.expected_codes)
 
         if hm.pool:
-            c.slb.service_group.update(hm.pool.id, health_monitor=hm_name)
+            c.client.slb.service_group.update(hm.pool.id, health_monitor=hm_name)
 
     def create(self, context, hm):
         with A10WriteStatusContext(self, context, pool) as c:
-            self._set(context, hm, c, c.slb.hm.create)
+            self._set(context, hm, c, c.client.slb.hm.create)
 
     def update(self, context, old_hm, hm):
         with A10WriteStatusContext(self, context, pool) as c:
-            self._set(context, hm, c, c.slb.hm.update)
+            self._set(context, hm, c, c.client.slb.hm.update)
 
     def delete(self, context, hm):
         with A10DeleteContext(self, context, pool) as c:
             if hm.pool:
-                c.slb.service_group.update(hm.pool.id, health_monitor="")
-            c.slb.hm.delete(hm.id[0:28])
+                c.client.slb.service_group.update(hm.pool.id, health_monitor="")
+            c.client.slb.hm.delete(hm.id[0:28])
