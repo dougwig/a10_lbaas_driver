@@ -82,19 +82,16 @@ class A10DeleteContext(A10WriteContext):
         super(A10DeleteContext, self).__exit__(exc_type, exc_value, traceback)
 
     def partition_cleanup_check(self):
-        todo
-        tloadbalander = context._session.query(lb_db.Pool)
-        n = tpool.filter_by(tenant_id=pool['tenant_id']).count()
+        # If we are not using appliance partitions, we are done.
+        if self.device_cfg['v_method'].lower() != 'adp':
+            return
 
-        tlistener = context._session.query(lb_db.Pool)
-        n = tpool.filter_by(tenant_id=pool['tenant_id']).count()
-
-        tpool = context._session.query(lb_db.Pool)
-        n = tpool.filter_by(tenant_id=pool['tenant_id']).count()
-
-        if n == 0 and n == 0 and n == 0:
-                   try:
-                        c.client.partition_delete(tenant_id=pool['tenant_id'])
-                    except Exception:
-                        raise a10_ex.ParitionDeleteError(
-                            partition=pool['tenant_id'][0:13])
+        n = self.driver.pool._total(self.context, self.tenant_id)
+        n += self.driver.load_balancer._total(self.context, self.tenant_id)
+        n += self.driver.listener._total(self.context, self.tenant_id)
+        n += self.driver.health_monitor._total(self.context, self.tenant_id)
+        if n == 0:
+            try:
+                self.client.system.partition.delete(self.tenant_id)
+            except:
+                LOG.error("A10Driver: partition cleanup failed; ignoring")

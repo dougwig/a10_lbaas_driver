@@ -18,7 +18,11 @@ import a10_context as a10
 
 class PoolManager(driver_base.BasePoolManager):
 
-    def _set(self, context, pool, c, set_method):
+    def _total(self, context, tenant_id):
+        return context._session.query(lb_db.PoolV2).filter_by(
+            tenant_id=member['tenant_id']).count()
+
+    def _set(self, c, set_method, context, pool):
         lb_algorithms = {
             'ROUND_ROBIN': c.client.slb.service_group.ROUND_ROBIN,
             'LEAST_CONNECTIONS': c.client.slb.service_group.LEAST_CONNECTION,
@@ -33,13 +37,16 @@ class PoolManager(driver_base.BasePoolManager):
                    protocol=protocols[pool.protocol],
                    lb_method=algoritms[pool.lb_algorithm])
 
+        if pool.sessionpersistence:
+            PersistenceManager(self, c, pool).create()
+
     def create(self, context, pool):
         with a10.A10WriteStatusContext(self, context, pool) as c:
-            self._set(context, pool, c, c.client.slb.service_group.create)
+            self._set(c, c.client.slb.service_group.create, context, pool)
 
     def update(self, context, old_pool, pool):
         with a10.A10WriteStatusContext(self, context, pool) as c:
-            self._set(context, pool, c, c.client.slb.service_group.update)
+            self._set(c, c.client.slb.service_group.update, context, pool)
 
     def delete(self, context, pool):
         with a10.A10DeleteContext(self, context, pool) as c:
@@ -51,3 +58,51 @@ class PoolManager(driver_base.BasePoolManager):
                                                    pool.health_monitor)
 
             c.client.slb.service_group.delete(pool.id)
+
+            if pool.sessionpersistence:
+                PersistenceManager(self, c, pool).delete()
+
+
+class PersistenceManager(object):
+
+    def __init__(self, mgr, c, context, pool):
+        self.mgr = mgr
+        self.c = c
+        self.context = context
+        self.pool = pool
+        self.sp = pool.sessionpersistence
+        self.name = pool.id
+
+    def create(self):
+        methods = {
+            'HTTP_COOKIE':
+                self.c.client.slb.template.cookie_persistence.create,
+            'SOURCE_IP':
+                self.c.client.slb.template.source_ip_persistence.create,
+        }
+        if self.sp.type in methods:
+            try:
+                methods[self.sp.type](self.name)
+            except acos_errors.Exists:
+                pass
+        else:
+            raise unsupported_todo
+
+        if pool.listener:
+            self.mgr.driver.listener._update(c, context, pool.listener)
+
+    def delete(self):
+        methods = {
+            'HTTP_COOKIE':
+                self.c.client.slb.template.cookie_persistence.delete,
+            'SOURCE_IP':
+                self.c.client.slb.template.source_ip_persistence.delete,
+        }
+        if self.sp.type in methods:
+            try:
+                methods[self.sp.type](self.name)
+            except Exception:
+                pass
+
+        if pool.listener:
+            self.mgr.driver.listener._update(c, context, pool.listener)

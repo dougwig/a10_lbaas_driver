@@ -12,11 +12,16 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
+from neutron.db.loadbalancer import loadbalancer_db as lb_db
 from neutron.services.loadbalancer.drivers import driver_base
 import a10_context as a10
 
 
 class HealthMonitorManager(driver_base.BaseHealthMonitorManager):
+
+    def _total(self, context, tenant_id):
+        return context._session.query(lb_db.HealthMonitorV2).filter_by(
+            tenant_id=member['tenant_id']).count()
 
     def _set(self, c, set_method, context, hm):
         hm_map = {
@@ -35,9 +40,12 @@ class HealthMonitorManager(driver_base.BaseHealthMonitorManager):
             c.client.slb.service_group.update(hm.pool.id,
                                               health_monitor=hm_name)
 
+    def _create(self, c, context, hm):
+        self._set(c, c.client.slb.hm.create, context, hm)
+
     def create(self, context, hm):
         with a10.A10WriteStatusContext(self, context, pool) as c:
-            self._set(c, c.client.slb.hm.create, context, hm)
+            self._create(c, context, hm)
 
     def update(self, context, old_hm, hm):
         with a10.A10WriteStatusContext(self, context, pool) as c:

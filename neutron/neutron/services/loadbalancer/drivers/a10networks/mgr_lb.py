@@ -12,25 +12,32 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
+from neutron.db.loadbalancer import loadbalancer_db as lb_db
 from neutron.services.loadbalancer.drivers import driver_base
 import a10_context as a10
 
 
 class LoadBalancerManager(driver_base.BaseLoadBalancerManager):
 
+    def _total(self, context, tenant_id):
+        return context._session.query(lb_db.LoadBalancer).filter_by(
+            tenant_id=member['tenant_id']).count()
+
     def create(self, context, load_balancer):
         with A10WriteStatusContext(self, context, load_balancer) as c:
             c.client.slb.virtual_server.create(blah)
 
-    def create(self, context, obj):
-        with A10WriteStatusContext(self, context, pool) as c:
-            c.client.slb.virtual_server.create(blah)
+            for listener in load_balancer.listeners:
+                try:
+                    self.driver._listener._create(c, context, listener)
+                except acos_errors.Exists:
+                    pass
 
-    def update(self, context, old_obj, obj):
+    def update(self, context, old_load_balancer, load_balancer):
         with A10WriteStatusContext(self, context, pool) as c:
             c.client.slb.virtual_server.update(blah)
 
-    def delete(self, context, obj):
+    def delete(self, context, load_balancer):
         with A10DeleteContext(self, context, pool) as c:
             c.client.slb.virtual_server.delete(blah)
 
@@ -59,83 +66,5 @@ class LoadBalancerManager(driver_base.BaseLoadBalancerManager):
                     "active_connections": 0,
                     "total_connections": 0
                 }
-
-
-    # def _persistence_create(self, a10, vip):
-    #     persist_type = vip['session_persistence']['type']
-    #     name = vip['id']
-
-    #     try:
-    #         if a10.persistence_exists(persist_type, name):
-    #             return name
-    #         a10.persistence_create(persist_type, name)
-    #     except Exception:
-    #         raise a10_ex.TemplateCreateError(template=name)
-
-    #     return name
-
-    # def _setup_vip_args(self, a10, vip):
-    #     s_pers = None
-    #     c_pers = None
-    #     LOG.debug("_setup_vip_args vip=%s", vip)
-    #     if ('session_persistence' in vip and
-    #             vip['session_persistence'] is not None):
-    #         LOG.debug("creating persistence template")
-    #         pname = self._persistence_create(a10, vip)
-    #         if vip['session_persistence']['type'] is "HTTP_COOKIE":
-    #             c_pers = pname
-    #         elif vip['session_persistence']['type'] == "SOURCE_IP":
-    #             s_pers = pname
-    #     status = 1
-    #     if vip['admin_state_up'] is False:
-    #         status = 0
-    #     LOG.debug("_setup_vip_args = %s, %s, %d", s_pers, c_pers, status)
-    #     return s_pers, c_pers, status
-
-    # def create_vip(self, context, vip):
-    #     a10 = self._device_context(tenant_id=vip['tenant_id'])
-    #     s_pers, c_pers, status = self._setup_vip_args(a10, vip)
-
-    #     try:
-    #         a10.virtual_server_create(vip['id'], vip['address'],
-    #                                   vip['protocol'], vip['protocol_port'],
-    #                                   vip['pool_id'],
-    #                                   s_pers, c_pers, status)
-    #         self._active(context, lb_db.Vip, vip['id'])
-
-    #     except Exception:
-    #         self._failed(context, lb_db.Vip, vip['id'])
-    #         raise a10_ex.VipCreateError(vip=vip['id'])
-
-    # def update_vip(self, context, old_vip, vip):
-    #     a10 = self._device_context(tenant_id=vip['tenant_id'])
-    #     s_pers, c_pers, status = self._setup_vip_args(a10, vip)
-
-    #     try:
-    #         a10.virtual_port_update(vip['id'], vip['protocol'],
-    #                                 vip['pool_id'],
-    #                                 s_pers, c_pers, status)
-    #         self._active(context, lb_db.Vip, vip['id'])
-
-    #     except Exception:
-    #         self._failed(context, lb_db.Vip, vip['id'])
-    #         raise a10_ex.VipUpdateError(vip=vip['id'])
-
-    # def delete_vip(self, context, vip):
-    #     a10 = self._device_context(tenant_id=vip['tenant_id'])
-    #     try:
-    #         if vip['session_persistence'] is not None:
-    #             a10.persistence_delete(vip['session_persistence']['type'],
-    #                                    vip['id'])
-    #     except Exception:
-    #         pass
-
-    #     try:
-    #         a10.virtual_server_delete(vip['id'])
-    #         self.plugin._delete_db_vip(context, vip['id'])
-    #     except Exception:
-    #         self._failed(context, lb_db.Vip, vip['id'])
-    #         raise a10_ex.VipDeleteError(vip=vip['id'])
-
 
 

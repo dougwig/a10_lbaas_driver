@@ -42,14 +42,14 @@ class MemberManager(driver_base.BaseMemberManager):
             address=member['address']).count()
 
     def create(self, context, member):
-        with A10WriteStatusContext(self, context, pool) as c:
+        with A10WriteStatusContext(self, context, member) as c:
             server_ip = self._get_ip(context, member,
                                      c.device_cfg['use_float'])
             server_name = self._get_name(member, server_ip)
 
-            status = c.client.slb.service_group.member.UP
+            status = c.client.slb.UP
             if not member["admin_state_up"]:
-                status = c.client.slb.service_group.member.DOWN
+                status = c.client.slb.DOWN
 
             try:
                 c.client.server_create(server_name, ip_address)
@@ -59,8 +59,8 @@ class MemberManager(driver_base.BaseMemberManager):
             c.client.slb.member.create(member.pool_id, server_name,
                                        member.protocol_port, status=status)
 
-    def update(self, context, old_obj, obj):
-        with A10WriteStatusContext(self, context, pool) as c:
+    def update(self, context, old_member, member):
+        with A10WriteStatusContext(self, context, member) as c:
             server_ip = self._get_ip(context, member,
                                      c.device_cfg['use_float'])
             server_name = self._get_name(member, server_ip)
@@ -75,7 +75,7 @@ class MemberManager(driver_base.BaseMemberManager):
                                                      status)
 
     def _delete(self, c, context, member):
-        server_ip = self._get_ip(context, member, todo,
+        server_ip = self._get_ip(context, member,
                                  c.device_cfg['use_float'])
         server_name = self._get_name(member, server_ip)
 
@@ -87,5 +87,5 @@ class MemberManager(driver_base.BaseMemberManager):
             c.client.slb.server.delete(server_name)
 
     def delete(self, context, member):
-        with A10DeleteContext(self, context, pool) as c:
+        with A10DeleteContext(self, context, member) as c:
             self._delete(c, context, member)
