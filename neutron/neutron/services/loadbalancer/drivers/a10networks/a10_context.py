@@ -33,7 +33,7 @@ class A10Context(object):
         self.client.session.close()
 
         if exc_type is not None:
-            todo_error
+            return False
 
     def select_appliance_partition(self):
         # If we are not using appliance partitions, we are done.

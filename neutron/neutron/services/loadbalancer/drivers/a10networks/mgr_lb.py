@@ -34,22 +34,18 @@ class LoadBalancerManager(driver_base.BaseLoadBalancerManager):
                     pass
 
     def update(self, context, old_load_balancer, load_balancer):
-        with A10WriteStatusContext(self, context, pool) as c:
+        with A10WriteStatusContext(self, context, load_balancer) as c:
             c.client.slb.virtual_server.update(blah)
 
     def delete(self, context, load_balancer):
-        with A10DeleteContext(self, context, pool) as c:
+        with A10DeleteContext(self, context, load_balancer) as c:
             c.client.slb.virtual_server.delete(blah)
 
     def refresh(self, context, lb_obj, force=False):
-        # This is intended to trigger the backend to check and repair
-        # the state of this load balancer and all of its dependent objects
-        LOG.debug("LB pool refresh %s, force=%s", lb_obj.id, force)
-        with A10Context(self, context, pool) as c:
-            todo
+        raise a10_ex.UnsupportedFeature()
 
     def stats(self, context, lb_obj):
-        with A10Context(self, context, pool) as c:
+        with A10Context(self, context, lb_obj) as c:
             try:
                 r = c.client.client.slb.virtual_server.stats(lb_obj.id)
                 return {

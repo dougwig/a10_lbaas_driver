@@ -14,6 +14,7 @@
 
 from neutron.services.loadbalancer.drivers import driver_base
 import a10_context as a10
+import a10_exceptions as a10_ex
 
 
 class PoolManager(driver_base.BasePoolManager):
@@ -86,7 +87,7 @@ class PersistenceManager(object):
             except acos_errors.Exists:
                 pass
         else:
-            raise unsupported_todo
+            raise a10_ex.UnsupportedFeature()
 
         if pool.listener:
             self.mgr.driver.listener._update(c, context, pool.listener)
