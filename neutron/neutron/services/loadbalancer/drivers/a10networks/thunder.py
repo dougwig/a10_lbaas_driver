@@ -12,16 +12,10 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
-import acos_client
+from neutron.db import l3_db
+from neutron.db.loadbalancer import loadbalancer_db as lb_db
 from neutron.openstack.common import log as logging
 from neutron.services.loadbalancer.drivers import driver_base
-
-import a10_config
-import mgr_hm
-import mgr_lb
-import mgr_listener
-import mgr_member
-import mgr_pool
 
 VERSION = "J1.0.0"
 LOG = logging.getLogger(__name__)
@@ -32,46 +26,110 @@ class ThunderDriver(driver_base.LoadBalancerBaseDriver):
     def __init__(self, plugin):
         super(ThunderDriver, self).__init__(plugin)
 
-        self.load_balancer = mgr_lb.LoadBalancerManager(self)
-        self.listener = mgr_listener.ListenerManager(self)
-        self.pool = mgr_pool.PoolManager(self)
-        self.member = mgr_member.MemberManager(self)
-        self.health_monitor = mgr_hm.HealthMonitorManager(self)
+        self.load_balancer = LoadBalancerManager(self)
+        self.listener = ListenerManager(self)
+        self.pool = PoolManager(self)
+        self.member = MemberManager(self)
+        self.health_monitor = HealthMonitorManager(self)
 
         LOG.info("A10Driver: initializing, version=%s, acos_client=%s",
                  VERSION, acos_client.VERSION)
 
-        self.config = a10_config.A10Config()
-        self.appliance_hash = acos_client.Hash(self.config.devices.keys())
-        if self.config.get('verify_appliances', True):
-            self._verify_appliances()
+        self.a10 = acos_openstack_neutron.LBaaSDriver(self)
 
-    def _select_a10_device(self, tenant_id):
-        s = self.appliance_hash.get_server(tenant_id)
-        return self.config.devices[s]
 
-    def _get_a10_client(self, device_info):
-        d = device_info
-        protocol = d.get('protocol', 'https')
-        port = {'http': 80, 'https': 443}[protocol]
-        if 'port' in d:
-            port = d['port']
+class LoadBalancerManager(driver_base.BaseLoadBalancerManager):
 
-        return acos_client.Client(d['host'],
-                                  d.get('api_version', acos_client.AXAPI_21),
-                                  d['username'], d['password'],
-                                  port=port, protocol=protocol)
+    def _total(self, context, tenant_id):
+        return context._session.query(lb_db.LoadBalancer).filter_by(
+            tenant_id=member['tenant_id']).count()
 
-    def _verify_appliances(self):
-        LOG.info("A10Driver: verifying appliances")
+    def create(self, context, lb):
+        self.driver.a10.lb.create(self, context, lb)
 
-        if len(self.config.devices) == 0:
-            LOG.error(_("A10Driver: no configured appliances"))
+    def update(self, context, old_lb, lb):
+        self.driver.a10.lb.update(self, context, old_lb, lb)
 
-        for k, v in self.config.devices.items():
-            try:
-                LOG.info("A10Driver: appliance(%s) = %s", k,
-                         self._get_a10_client(v).system.information())
-            except Exception:
-                LOG.error(_("A10Driver: unable to connect to configured"
-                            "appliance, name=%s"), k)
+    def delete(self, context, lb):
+        self.driver.a10.lb.delete(self, context, lb)
+
+    def refresh(self, context, lb, force=False):
+        self.driver.a10.lb.refresh(self, context, lb, force)
+
+    def stats(self, context, lb):
+        return self.driver.a10.lb.stats(self, context, lb)
+
+
+class ListenerManager(driver_base.BaseListenerManager):
+
+    def _total(self, context, tenant_id):
+        return context._session.query(lb_db.Listener).filter_by(
+            tenant_id=member['tenant_id']).count()
+
+    def create(self, context, listener):
+        self.driver.a10.listener.create(self, context, listener)
+
+    def update(self, context, old_listener, listener):
+        self.driver.a10.listener.update(self, context, old_listener, listener)
+
+    def delete(self, context, listener):
+        self.driver.a10.listener.delete(self, context, listener)
+
+
+class PoolManager(driver_base.BasePoolManager):
+
+    def _total(self, context, tenant_id):
+        return context._session.query(lb_db.PoolV2).filter_by(
+            tenant_id=member['tenant_id']).count()
+
+    def create(self, context, pool):
+        self.driver.a10.pool.create(self, context, pool)
+
+    def update(self, context, old_pool, pool):
+        self.driver.a10.pool.update(self, context, old_pool, pool)
+
+    def delete(self, context, pool):
+        self.driver.a10.pool.delete(self, context, pool)
+
+
+class MemberManager(driver_base.BaseMemberManager):
+
+    def _get_ip(self, context, member, use_float=False):
+        ip_address = member['address']
+        if use_float:
+            fip_qry = context.session.query(l3_db.FloatingIP)
+            if (fip_qry.filter_by(fixed_ip_address=ip_address).count() > 0):
+                float_address = fip_qry.filter_by(
+                    fixed_ip_address=ip_address).first()
+                ip_address = str(float_address.floating_ip_address)
+        return ip_address
+
+    def _count(self, context, member):
+        return context._session.query(lb_db.MemberV2).filter_by(
+            tenant_id=member['tenant_id'],
+            address=member['address']).count()
+
+    def create(self, context, member):
+        self.driver.a10.member.create(self, context, member)
+
+    def update(self, context, old_member, member):
+        self.driver.a10.member.update(self, context, old_member, member)
+
+    def delete(self, context, member):
+        self.driver.a10.member.delete(self, context, member)
+
+
+class HealthMonitorManager(driver_base.BaseHealthMonitorManager):
+
+    def _total(self, context, tenant_id):
+        return context._session.query(lb_db.HealthMonitorV2).filter_by(
+            tenant_id=member['tenant_id']).count()
+
+    def create(self, context, hm):
+        self.driver.a10.hm.create(self, context, hm)
+
+    def update(self, context, old_hm, hm):
+        self.driver.a10.hm.update(self, context, old_hm, hm)
+
+    def delete(self, context, hm):
+        self.driver.a10.hm.delete(self, context, hm)
