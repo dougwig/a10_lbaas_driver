@@ -12,3 +12,89 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
+import acos_client.errors as acos_errors
+
+
+class A10Context(object):
+
+    def __init__(self, mgr, context, lbaas_obj):
+        self.mgr = mgr
+        self.context = context
+        self.lbaas_obj = lbaas_obj
+
+    def __enter__(self):
+        self.tenant_id = self.lbaas_obj.tenant_id
+        self.device_cfg = self.mgr.driver._select_a10_device(self.tenant_id)
+        self.client = self.mgr.driver._get_a10_client(self.device_cfg)
+        self.select_appliance_partition()
+        return self
+
+    def __exit__(self, exc_type, exc_value, traceback):
+        self.client.session.close()
+
+        if exc_type is not None:
+            todo_error
+
+    def select_appliance_partition(self):
+        # If we are not using appliance partitions, we are done.
+        if self.device_cfg['v_method'].lower() != 'adp':
+            return
+
+        # Try to make the requested partition active
+        try:
+            self.client.system.partition.active(self.tenant_id)
+            return
+        except acos_errors.NotFound:
+            pass
+
+        # Create it if not found
+        self.client.system.partition.create(self.tenant_id)
+        self.client.system.partition.active(self.tenant_id)
+
+
+class A10WriteContext(A10Context):
+
+    def __exit__(self, exc_type, exc_value, traceback):
+        if exc_type is None:
+            self.client.system.write_memory()
+
+        super(A10WriteContext, self).__exit__(exc_type, exc_value, traceback)
+
+
+class A10WriteStatusContext(A10WriteContext):
+
+    def __exit__(self, exc_type, exc_value, traceback):
+        if exc_type is None:
+            self.mgr.active(self.context, self.lbaas_obj.id)
+        else:
+            self.mgr.failed(self.context, self.baas_obj.id)
+
+        super(A10CreateContext, self).__exit__(exc_type, exc_value, traceback)
+
+
+class A10DeleteContext(A10WriteContext):
+
+    def __exit__(self, exc_type, exc_value, traceback):
+        if exc_type is None:
+            self.db_delete(self.context, self.baas_obj.id)
+            self.partition_cleanup_check()
+
+        super(A10DeleteContext, self).__exit__(exc_type, exc_value, traceback)
+
+    def partition_cleanup_check(self):
+        todo
+        tloadbalander = context._session.query(lb_db.Pool)
+        n = tpool.filter_by(tenant_id=pool['tenant_id']).count()
+
+        tlistener = context._session.query(lb_db.Pool)
+        n = tpool.filter_by(tenant_id=pool['tenant_id']).count()
+
+        tpool = context._session.query(lb_db.Pool)
+        n = tpool.filter_by(tenant_id=pool['tenant_id']).count()
+
+        if n == 0 and n == 0 and n == 0:
+                   try:
+                        c.client.partition_delete(tenant_id=pool['tenant_id'])
+                    except Exception:
+                        raise a10_ex.ParitionDeleteError(
+                            partition=pool['tenant_id'][0:13])
