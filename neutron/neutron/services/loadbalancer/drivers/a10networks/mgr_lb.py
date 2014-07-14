@@ -23,9 +23,17 @@ class LoadBalancerManager(driver_base.BaseLoadBalancerManager):
         return context._session.query(lb_db.LoadBalancer).filter_by(
             tenant_id=member['tenant_id']).count()
 
+    def _set(self, c, set_method, context, load_balancer):
+        status = c.slb.UP
+        if not load_balancer.admin_state_up:
+            status = c.slb.DOWN
+
+        set_method(load_balancer.name, load_balancer.address, status)
+
     def create(self, context, load_balancer):
         with A10WriteStatusContext(self, context, load_balancer) as c:
-            c.client.slb.virtual_server.create(blah)
+            self._set(c, c.client.slb.virtual_server.create, context,
+                      load_balancer)
 
             for listener in load_balancer.listeners:
                 try:
@@ -35,11 +43,12 @@ class LoadBalancerManager(driver_base.BaseLoadBalancerManager):
 
     def update(self, context, old_load_balancer, load_balancer):
         with A10WriteStatusContext(self, context, load_balancer) as c:
-            c.client.slb.virtual_server.update(blah)
+            self._set(c, c.client.slb.virtual_server.update, context,
+                      load_balancer)
 
     def delete(self, context, load_balancer):
         with A10DeleteContext(self, context, load_balancer) as c:
-            c.client.slb.virtual_server.delete(blah)
+            c.client.slb.virtual_server.delete(load_balancer.name)
 
     def refresh(self, context, lb_obj, force=False):
         raise a10_ex.UnsupportedFeature()
