@@ -18,7 +18,7 @@ from neutron.services.loadbalancer.drivers import driver_base
 
 import a10_config
 
-VERSION = "1.0.0"
+VERSION = "J1.0.0"
 LOG = logging.getLogger(__name__)
 
 
@@ -151,40 +151,35 @@ class A10DeleteContext(A10WriteContext):
 
         if n == 0 and n == 0 and n == 0:
                    try:
-                        a10.partition_delete(tenant_id=pool['tenant_id'])
+                        c.client.partition_delete(tenant_id=pool['tenant_id'])
                     except Exception:
                         raise a10_ex.ParitionDeleteError(
                             partition=pool['tenant_id'][0:13])
 
 
-
-
 class LoadBalancerManager(driver_base.BaseLoadBalancerManager):
-    # SESSION_PERSISTENCE_SOURCE_IP = 'SOURCE_IP'
-    # SESSION_PERSISTENCE_HTTP_COOKIE = 'HTTP_COOKIE'
-    # SESSION_PERSISTENCE_APP_COOKIE = 'APP_COOKIE'
 
     def create(self, context, load_balancer):
-        with A10CreateContext(self, context, load_balancer) as c:
+        with A10WriteStatusContext(self, context, load_balancer) as c:
             c.client.slb.virtual_server.create(blah)
 
     def create(self, context, obj):
         with A10WriteStatusContext(self, context, pool) as c:
-            a10.slb.virtual_service.create(blah)
+            c.client.slb.virtual_server.create(blah)
 
     def update(self, context, old_obj, obj):
         with A10WriteStatusContext(self, context, pool) as c:
-            a10.slb.virtual_service.update(blah)
+            c.client.slb.virtual_server.update(blah)
 
     def delete(self, context, obj):
         with A10DeleteContext(self, context, pool) as c:
-            a10.slb.virtual_service.delete(blah)
+            c.client.slb.virtual_server.delete(blah)
 
     def refresh(self, context, lb_obj, force=False):
         # This is intended to trigger the backend to check and repair
         # the state of this load balancer and all of its dependent objects
         LOG.debug("LB pool refresh %s, force=%s", lb_obj.id, force)
-        with A10WriteStatusContext(self, context, pool) as c:
+        with A10Context(self, context, pool) as c:
             todo
 
     def stats(self, context, lb_obj):
@@ -206,46 +201,54 @@ class LoadBalancerManager(driver_base.BaseLoadBalancerManager):
                     "total_connections": 0
                 }
 
-# TODO - can i create a virtual server without a port?
 
 class ListenerManager(driver_base.BaseListenerManager):
 
-    # def create(self, name, ip_address, protocol, port, service_group_id,
-    #            s_pers=None, c_pers=None, status=1):
+    # SESSION_PERSISTENCE_SOURCE_IP = 'SOURCE_IP'
+    # SESSION_PERSISTENCE_HTTP_COOKIE = 'HTTP_COOKIE'
+    # SESSION_PERSISTENCE_APP_COOKIE = 'APP_COOKIE'
 
-    def create(self, context, listener):
+    def _set(self, set_method, context, listener):
         protocols = {
-            'TCP': a10.slb.virtual_service.protocol.TCP,
-            'UDP': a10.slb.virtual_service.protocol.UDP,
-            'HTTP': a10.slb.virtual_service.protocol.HTTP,
-            'HTTPS': a10.slb.virtual_service.protocol.HTTPS
+            'TCP': c.client.slb.virtual_server.vport.protocol.TCP,
+            'UDP': c.client.slb.virtual_server.vport.protocol.UDP,
+            'HTTP': c.client.slb.virtual_server.vport.protocol.HTTP,
+            'HTTPS': c.client.slb.virtual_server.vport.protocol.HTTPS
         }
 
-        a10.slb.virtual_service.create(listener.id,
-                                       protocols[listener.protocol],
-                                       listener.port,
-                                       listener.pool_id,
-                                       spers,
-                                       cpers,
-                                       status)
+        set_method(listener.load_balander_id, listener.id,
+                   protocol=protocols[listener.protocol],
+                   port=listener.port,
+                   service_group_name=listener.pool_id,
+                   s_pers_name=spers,
+                   c_pers_name=cpers,
+                   status=status)
 
-    def create(self, context, obj):
+    def create(self, context, listener):
         with A10WriteStatusContext(self, context, pool) as c:
-            a10.slb.virtual_service.create(blah)
+            self._set(c.client.slb.virtual_server.vport.create, context,
+                      listener)
 
-    def update(self, context, old_obj, obj):
+    def update(self, context, old_listener, listener):
         with A10WriteStatusContext(self, context, pool) as c:
-            a10.slb.virtual_service.update(blah)
+            self._set(c.client.slb.virtual_server.vport.update, context,
+                      listener)
 
-    def delete(self, context, obj):
+    def delete(self, context, listener):
         with A10DeleteContext(self, context, pool) as c:
             try:
                 if vip['session_persistence'] is not None:
-                    a10.persistence_delete(vip['session_persistence']['type'],
-                                           vip['id'])
+                    c.client.persistence_delete(
+                        vip['session_persistence']['type'],
+                        vip['id'])
             except Exception:
                 pass
-            a10.slb.virtual_service.delete(blah)
+
+            c.client.slb.virtual_server.vport.delete(
+                listener.load_balancer_id,
+                listener.id,
+                protocol=protocols[listener.protocol],
+                port=listener.port)
 
 
 class PoolManager(driver_base.BasePoolManager):
