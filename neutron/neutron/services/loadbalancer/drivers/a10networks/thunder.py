@@ -32,18 +32,31 @@ class ThunderDriver(driver_base.LoadBalancerBaseDriver):
         self.member = MemberManager(self)
         self.health_monitor = HealthMonitorManager(self)
 
-        LOG.info("A10Driver: initializing, version=%s, lbaas_manager=%s, "
-                 "acos_client=%s", VERSION, a10_neutron_lbaas.VERSION,
-                 acos_client.VERSION)
+        self.a10 = None
+        try:
+            # Attempt import here, so unit tests can replace self.a10
+            import a10_neutron_lbaas
+            import acos_client
 
-        self.a10 = a10_neutron_lbaas.LbaasManager(self)
+            LOG.info("A10Driver: initializing, version=%s, lbaas_manager=%s, "
+                     "acos_client=%s", VERSION, a10_neutron_lbaas.VERSION,
+                     acos_client.VERSION)
+
+            self.a10 = a10_neutron_lbaas.LbaasManager(self)
+        except ImportError:
+            pass
+
+        if self.a10 is None:
+            LOG.error(_("A10Driver: Failed to import a10_neutron_lbaas; "
+                        "please 'pip install a10_neutron_lbaas' and restart "
+                        "neutron."))
 
 
 class LoadBalancerManager(driver_base.BaseLoadBalancerManager):
 
     def _total(self, context, tenant_id):
         return context._session.query(lb_db.LoadBalancer).filter_by(
-            tenant_id=member['tenant_id']).count()
+            tenant_id=tenant_id).count()
 
     def create(self, context, lb):
         self.driver.a10.lb.create(context, lb)
@@ -65,7 +78,7 @@ class ListenerManager(driver_base.BaseListenerManager):
 
     def _total(self, context, tenant_id):
         return context._session.query(lb_db.Listener).filter_by(
-            tenant_id=member['tenant_id']).count()
+            tenant_id=tenant_id).count()
 
     def create(self, context, listener):
         self.driver.a10.listener.create(context, listener)
@@ -81,7 +94,7 @@ class PoolManager(driver_base.BasePoolManager):
 
     def _total(self, context, tenant_id):
         return context._session.query(lb_db.PoolV2).filter_by(
-            tenant_id=member['tenant_id']).count()
+            tenant_id=tenant_id).count()
 
     def create(self, context, pool):
         self.driver.a10.pool.create(context, pool)
@@ -124,7 +137,7 @@ class HealthMonitorManager(driver_base.BaseHealthMonitorManager):
 
     def _total(self, context, tenant_id):
         return context._session.query(lb_db.HealthMonitorV2).filter_by(
-            tenant_id=member['tenant_id']).count()
+            tenant_id=tenant_id).count()
 
     def create(self, context, hm):
         self.driver.a10.hm.create(context, hm)
