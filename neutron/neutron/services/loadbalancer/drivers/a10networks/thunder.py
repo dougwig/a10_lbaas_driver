@@ -13,7 +13,7 @@
 #    under the License.
 
 from neutron.db import l3_db
-from neutron.db.loadbalancer import loadbalancer_db as lb_db
+from neutron.db.loadbalancer import loadbalancer_dbv2 as lb_db
 from neutron.openstack.common import log as logging
 from neutron.services.loadbalancer.drivers import driver_base
 
@@ -52,10 +52,16 @@ class ThunderDriver(driver_base.LoadBalancerBaseDriver):
                         "neutron."))
 
 
+# Most driver calls below are straight passthroughs to the A10 package
+# 'a10_neutron_lbaas'.  Any function that has not been fully abstracted
+# into the openstack driver/plugin interface is NOT passed through, to
+# make it obvious which hidden interfaces/db calls that we rely on.
+
+
 class LoadBalancerManager(driver_base.BaseLoadBalancerManager):
 
     def _total(self, context, tenant_id):
-        return context._session.query(lb_db.LoadBalancer).filter_by(
+        return context.session.query(lb_db.LoadBalancer).filter_by(
             tenant_id=tenant_id).count()
 
     def create(self, context, lb):
@@ -77,7 +83,7 @@ class LoadBalancerManager(driver_base.BaseLoadBalancerManager):
 class ListenerManager(driver_base.BaseListenerManager):
 
     def _total(self, context, tenant_id):
-        return context._session.query(lb_db.Listener).filter_by(
+        return context.session.query(lb_db.Listener).filter_by(
             tenant_id=tenant_id).count()
 
     def create(self, context, listener):
@@ -93,7 +99,7 @@ class ListenerManager(driver_base.BaseListenerManager):
 class PoolManager(driver_base.BasePoolManager):
 
     def _total(self, context, tenant_id):
-        return context._session.query(lb_db.PoolV2).filter_by(
+        return context.session.query(lb_db.PoolV2).filter_by(
             tenant_id=tenant_id).count()
 
     def create(self, context, pool):
@@ -109,7 +115,7 @@ class PoolManager(driver_base.BasePoolManager):
 class MemberManager(driver_base.BaseMemberManager):
 
     def _get_ip(self, context, member, use_float=False):
-        ip_address = member['address']
+        ip_address = member.address
         if use_float:
             fip_qry = context.session.query(l3_db.FloatingIP)
             if (fip_qry.filter_by(fixed_ip_address=ip_address).count() > 0):
@@ -119,9 +125,9 @@ class MemberManager(driver_base.BaseMemberManager):
         return ip_address
 
     def _count(self, context, member):
-        return context._session.query(lb_db.MemberV2).filter_by(
-            tenant_id=member['tenant_id'],
-            address=member['address']).count()
+        return context.session.query(lb_db.MemberV2).filter_by(
+            tenant_id=member.tenant_id,
+            address=member.address).count()
 
     def create(self, context, member):
         self.driver.a10.member.create(context, member)
@@ -136,7 +142,7 @@ class MemberManager(driver_base.BaseMemberManager):
 class HealthMonitorManager(driver_base.BaseHealthMonitorManager):
 
     def _total(self, context, tenant_id):
-        return context._session.query(lb_db.HealthMonitorV2).filter_by(
+        return context.session.query(lb_db.HealthMonitorV2).filter_by(
             tenant_id=tenant_id).count()
 
     def create(self, context, hm):
