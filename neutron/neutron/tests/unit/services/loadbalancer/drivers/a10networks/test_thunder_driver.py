@@ -13,7 +13,6 @@
 #    under the License.
 
 import mock
-import sys
 
 from neutron import context
 from neutron.services.loadbalancer.drivers.a10networks import thunder

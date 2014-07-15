@@ -38,9 +38,9 @@ class ThunderDriver(driver_base.LoadBalancerBaseDriver):
             import a10_neutron_lbaas
             import acos_client
 
-            LOG.info("A10Driver: initializing, version=%s, lbaas_manager=%s, "
-                     "acos_client=%s", VERSION, a10_neutron_lbaas.VERSION,
-                     acos_client.VERSION)
+            LOG.debug("A10Driver: initializing, version=%s, lbaas_manager=%s,"
+                      " acos_client=%s", VERSION, a10_neutron_lbaas.VERSION,
+                      acos_client.VERSION)
 
             self.a10 = a10_neutron_lbaas.LbaasManager(self)
         except ImportError:
