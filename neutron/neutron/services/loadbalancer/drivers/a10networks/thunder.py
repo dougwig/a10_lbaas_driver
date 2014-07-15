@@ -46,19 +46,19 @@ class LoadBalancerManager(driver_base.BaseLoadBalancerManager):
             tenant_id=member['tenant_id']).count()
 
     def create(self, context, lb):
-        self.driver.a10.lb.create(self, context, lb)
+        self.driver.a10.lb.create(context, lb)
 
     def update(self, context, old_lb, lb):
-        self.driver.a10.lb.update(self, context, old_lb, lb)
+        self.driver.a10.lb.update(context, old_lb, lb)
 
     def delete(self, context, lb):
-        self.driver.a10.lb.delete(self, context, lb)
+        self.driver.a10.lb.delete(context, lb)
 
     def refresh(self, context, lb, force=False):
-        self.driver.a10.lb.refresh(self, context, lb, force)
+        self.driver.a10.lb.refresh(context, lb, force)
 
     def stats(self, context, lb):
-        return self.driver.a10.lb.stats(self, context, lb)
+        return self.driver.a10.lb.stats(context, lb)
 
 
 class ListenerManager(driver_base.BaseListenerManager):
@@ -68,13 +68,13 @@ class ListenerManager(driver_base.BaseListenerManager):
             tenant_id=member['tenant_id']).count()
 
     def create(self, context, listener):
-        self.driver.a10.listener.create(self, context, listener)
+        self.driver.a10.listener.create(context, listener)
 
     def update(self, context, old_listener, listener):
-        self.driver.a10.listener.update(self, context, old_listener, listener)
+        self.driver.a10.listener.update(context, old_listener, listener)
 
     def delete(self, context, listener):
-        self.driver.a10.listener.delete(self, context, listener)
+        self.driver.a10.listener.delete(context, listener)
 
 
 class PoolManager(driver_base.BasePoolManager):
@@ -84,13 +84,13 @@ class PoolManager(driver_base.BasePoolManager):
             tenant_id=member['tenant_id']).count()
 
     def create(self, context, pool):
-        self.driver.a10.pool.create(self, context, pool)
+        self.driver.a10.pool.create(context, pool)
 
     def update(self, context, old_pool, pool):
-        self.driver.a10.pool.update(self, context, old_pool, pool)
+        self.driver.a10.pool.update(context, old_pool, pool)
 
     def delete(self, context, pool):
-        self.driver.a10.pool.delete(self, context, pool)
+        self.driver.a10.pool.delete(context, pool)
 
 
 class MemberManager(driver_base.BaseMemberManager):
@@ -111,13 +111,13 @@ class MemberManager(driver_base.BaseMemberManager):
             address=member['address']).count()
 
     def create(self, context, member):
-        self.driver.a10.member.create(self, context, member)
+        self.driver.a10.member.create(context, member)
 
     def update(self, context, old_member, member):
-        self.driver.a10.member.update(self, context, old_member, member)
+        self.driver.a10.member.update(context, old_member, member)
 
     def delete(self, context, member):
-        self.driver.a10.member.delete(self, context, member)
+        self.driver.a10.member.delete(context, member)
 
 
 class HealthMonitorManager(driver_base.BaseHealthMonitorManager):
@@ -127,10 +127,10 @@ class HealthMonitorManager(driver_base.BaseHealthMonitorManager):
             tenant_id=member['tenant_id']).count()
 
     def create(self, context, hm):
-        self.driver.a10.hm.create(self, context, hm)
+        self.driver.a10.hm.create(context, hm)
 
     def update(self, context, old_hm, hm):
-        self.driver.a10.hm.update(self, context, old_hm, hm)
+        self.driver.a10.hm.update(context, old_hm, hm)
 
     def delete(self, context, hm):
-        self.driver.a10.hm.delete(self, context, hm)
+        self.driver.a10.hm.delete(context, hm)
