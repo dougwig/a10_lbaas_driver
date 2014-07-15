@@ -32,10 +32,11 @@ class ThunderDriver(driver_base.LoadBalancerBaseDriver):
         self.member = MemberManager(self)
         self.health_monitor = HealthMonitorManager(self)
 
-        LOG.info("A10Driver: initializing, version=%s, acos_client=%s",
-                 VERSION, acos_client.VERSION)
+        LOG.info("A10Driver: initializing, version=%s, lbaas_manager=%s, "
+                 "acos_client=%s", VERSION, a10_neutron_lbaas.VERSION,
+                 acos_client.VERSION)
 
-        self.a10 = acos_openstack_neutron.LBaaSDriver(self)
+        self.a10 = a10_neutron_lbaas.LbaasManager(self)
 
 
 class LoadBalancerManager(driver_base.BaseLoadBalancerManager):
